@@ -13,7 +13,6 @@ env:
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
-    # Permissions needed to log in to the container registry and push images
     permissions:
       contents: read
       packages: write
@@ -21,6 +20,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      # ---- ADD THIS NEW STEP ----
+      # This step creates a new environment variable IMAGE_NAME_LC with a lowercase version of the repo name.
+      - name: Set image name to lowercase
+        run: echo "IMAGE_NAME_LC=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
@@ -34,7 +38,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # ---- UPDATE THIS LINE ----
+          # Use the new lowercase environment variable here.
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:latest
           build-args: |
             SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
             SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
