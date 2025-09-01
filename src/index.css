@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Smooth panel scrollbars (optional) */
+.panel-scroll {
+  scrollbar-width: thin;
+}
+.panel-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.panel-scroll::-webkit-scrollbar-thumb { background: rgba(100,116,139,.5); border-radius: 9999px; }
+
+/* Canvas drop target hint */
+.drop-glow {
+  box-shadow: 0 0 0 3px rgba(59,102,246,.25) inset, 0 0 0 1px rgba(59,102,246,.35);
+}
+
+/* Prose for HTML block previews */
+.prose :where(h1,h2,h3){ @apply font-semibold text-slate-800; }

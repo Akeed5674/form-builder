@@ -1,0 +1,356 @@
+/******************************
+  STUDIO THEME — design tokens
+******************************/
+:root {
+  --studio-primary: #6366f1;   /* indigo-500 */
+  --studio-accent:  #8b5cf6;   /* violet-500 */
+  --studio-bg:      #f6f7fb;
+  --studio-card:    #ffffff;
+  --studio-text:    #0f172a;
+  --studio-muted:   #64748b;
+  --studio-border:  #e5e7eb;
+  --studio-shadow:  0 10px 30px rgba(2, 6, 23, 0.06);
+}
+
+/* Scope everything to the app wrapper so we never override Tailwind globally */
+.ui-fix, .ui-fix * , .ui-fix *::before, .ui-fix *::after { box-sizing: border-box; }
+.ui-fix { font-size: 16px; }
+
+/********************************
+  App background & cards
+*********************************/
+.ui-fix,
+.ui-fix .min-h-screen {
+  background: var(--studio-bg) !important;
+}
+.ui-fix .shadow-card { box-shadow: var(--studio-shadow) !important; }
+
+.ui-fix .bg-white.border.rounded-xl,
+.ui-fix .bg-white.border.rounded-2xl,
+.ui-fix .bg-white.border.rounded-xl.shadow-card,
+.ui-fix .bg-white.border.rounded-2xl.shadow-card {
+  border-color: var(--studio-border) !important;
+  background: var(--studio-card) !important;
+  border-radius: 16px !important;
+}
+.ui-fix {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden; /* optional if you don’t want scrollbars */
+}
+
+
+/********************************
+  Topbar (builder) – subtle glass
+*********************************/
+.ui-fix .max-w-full.mx-auto.px-6.h-14.grid {
+  background: color-mix(in srgb, #0b1220 92%, transparent) !important;
+  backdrop-filter: saturate(120%) blur(8px);
+  -webkit-backdrop-filter: saturate(120%) blur(8px);
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+/********************************
+  Tabs (settings · build · styling)
+*********************************/
+.ui-fix .uppercase.text-sm.tracking-wide {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  padding: .375rem .75rem !important;
+  border-radius: 9999px !important;
+}
+.ui-fix .text-cyan-400.border-b-2.border-cyan-400 {
+  background: #0f172a !important;
+  color: #fff !important;
+  border: 0 !important;
+}
+
+/********************************
+  Builder grid container
+*********************************/
+/* Exact 3-column layout for the builder grid (build & styling tabs) */
+.ui-fix .builder-grid {
+  grid-template-columns: 280px minmax(560px, 1fr) 380px;
+  width: 100%;
+  height: 100%;
+  gap: 16px !important;
+}
+
+
+/********************************
+  Sidebar (left)
+*********************************/
+.ui-fix .builder-left {
+  min-width: 0;
+  width: auto;
+  position: sticky;
+  top: 88px;
+  height: calc(100vh - 112px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0b1220 0%, #0e172a 100%) !important;
+  border-right: 1px solid rgba(255,255,255,0.06) !important;
+  border-radius: 16px;
+}
+.ui-fix .builder-left .p-3 { overflow: auto; }
+.ui-fix .builder-left .p-3 .space-y-2 > button { height: 44px; }
+
+/* Sidebar text & item states */
+.ui-fix .builder-left .text-slate-400,
+.ui-fix .builder-left .text-slate-300 { color: rgba(226,232,240,0.8) !important; }
+.ui-fix .builder-left button:hover { background: rgba(255,255,255,0.06) !important; }
+.ui-fix .builder-left .bg-slate-700,
+.ui-fix .builder-left .bg-slate-700\/40 { background: rgba(255,255,255,0.12) !important; }
+
+/********************************
+  Center canvas
+*********************************/
+.ui-fix .builder-main.panel-scroll {
+  min-height: 640px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  background: var(--studio-bg);  /* ✅ follows the CSS var you set inline */
+  border-radius: 16px;
+}
+
+
+/* Dragging ring color */
+.ui-fix .panel-scroll.ring-2 { --tw-ring-color: var(--studio-primary) !important; }
+
+/********************************
+  Right settings panel
+*********************************/
+.ui-fix .builder-right {
+  position: sticky;
+  top: 88px;
+  height: calc(100vh - 112px);
+  overflow: hidden;
+  border-radius: 16px;
+}
+.ui-fix .builder-right .p-4 { overflow: auto; height: 100%; }
+
+/********************************
+  Cards (builder fields)
+*********************************/
+/* AFTER */
+/* updated */
+.ui-fix .group.relative.p-4.border.rounded-xl {
+  border-color: var(--field-bdr, var(--studio-border)) !important;
+  background: var(--field-card, #fff) !important;
+}
+
+
+.ui-fix .group.relative.p-4.border.rounded-xl:hover {
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.08);
+}
+.ui-fix .group.relative .-top-3.-right-3 {
+  box-shadow: 0 6px 16px rgba(225, 29, 72, .35) !important; /* delete btn glow */
+}
+
+/********************************
+  Inputs (builder + public view)
+*********************************/
+
+/********************************
+  Primary actions
+*********************************/
+.ui-fix .bg-indigo-600,
+.ui-fix .bg-cyan-500 {
+  background: linear-gradient(135deg, var(--studio-primary), var(--studio-accent)) !important;
+  border-color: transparent !important;
+}
+.ui-fix .bg-indigo-600:hover,
+.ui-fix .bg-cyan-500:hover { filter: brightness(0.95); }
+
+/********************************
+  Bordered buttons (“ghost”)
+*********************************/
+.ui-fix button.border {
+  border-color: var(--studio-border) !important;
+  transition: background .2s ease, border-color .2s ease, transform .08s ease;
+}
+.ui-fix button.border:hover { background: #f8fafc !important; }
+
+/********************************
+  Toolbox chips
+*********************************/
+.ui-fix button.w-full.flex.items-center.gap-3.p-3.rounded-md.bg-slate-800\/70 {
+  background: linear-gradient(180deg, #0f172a 0%, #0b1220 100%) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+.ui-fix button.w-full.flex.items-center.gap-3.p-3.rounded-md.bg-slate-800\/70:hover {
+  background: linear-gradient(180deg, #121a2b 0%, #0d1525 100%) !important;
+}
+
+/********************************
+  Prose blocks (HTML field)
+*********************************/
+.ui-fix .prose {
+  --tw-prose-body: var(--studio-text);
+  --tw-prose-headings: #0f172a;
+}
+.ui-fix .prose a { color: var(--studio-primary); }
+
+/********************************
+  Scroll containers (nice scrollbars)
+*********************************/
+.ui-fix .panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.ui-fix .panel-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+.ui-fix .panel-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+/********************************
+  Public form background
+*********************************/
+/* AFTER — remove gradients and the !important so inline styles can win */
+.ui-fix .min-h-screen.p-4.bg-slate-100,
+.ui-fix .min-h-screen.p-6 {
+  background: var(--studio-bg);
+}
+.ui-fix input[type="text"],
+.ui-fix input[type="email"],
+
+.ui-fix textarea {
+  border-color: var(--field-bdr, var(--studio-border));
+  background: var(--field-bg, #fff);
+}
+
+/********************************
+  Drag target box sizing (empty canvas)
+*********************************/
+.ui-fix .border-2.border-dashed.rounded-xl { min-height: 220px; }
+
+/********************************
+  Responsive collapse
+*********************************/
+@media (max-width: 1200px) {
+  .ui-fix .builder-grid { grid-template-columns: 1fr; }
+  .ui-fix .builder-left { display: none; }
+  .ui-fix .builder-main.panel-scroll { max-height: unset; }
+}
+/* Nuke all card/drop shadows */
+.ui-fix .shadow-card,
+.ui-fix .group.relative.p-4.border.rounded-xl,
+.ui-fix .group.relative.p-4.border.rounded-xl:hover,
+.ui-fix .bg-white.border.rounded-xl.shadow-card,
+.ui-fix .bg-white.border.rounded-2xl.shadow-card,
+.ui-fix .group.relative .-top-3.-right-3 {  /* delete button glow */
+  box-shadow: none !important;
+}
+
+/* Or globally disable the token */
+:root { --studio-shadow: none; }  /* optional */
+/* Use a flat background instead of radial gradients */
+.ui-fix .min-h-screen.p-4.bg-slate-100,
+.ui-fix .min-h-screen.p-6 {
+  background: var(--studio-bg) !important;
+}
+/* Tabs - nicer style */
+.ui-fix .uppercase.text-sm.tracking-wide {
+  font-weight: 600 !important;      /* bold */
+  text-transform: capitalize !important; /* Capitalize first letter */
+  font-size: 0.95rem !important;    /* slightly larger */
+  letter-spacing: 0 !important;     
+  padding: 0.5rem 1rem !important;  /* more breathing room */
+  border-radius: 9999px !important; /* pill look */
+}
+/* 3D Logo */
+.logo3d {
+  --w: 32px;                    /* adjust size */
+  display: grid;
+  place-items: center;
+  transform-style: preserve-3d;
+  transform: rotateX(-35deg) rotateY(-45deg);
+  height: var(--w);
+  width: var(--w);
+  color: #facc15;               /* yellow-400 */
+}
+
+.logo3d .face {
+  grid-area: 1/1;
+  width: var(--w);
+  aspect-ratio: 3/4;
+  transform:
+    rotateY(calc(var(--j) / var(--n) * 1turn))
+    translateZ(calc(.5 * var(--w)));
+  background:
+    linear-gradient(90deg, transparent 33.3%, currentColor 0)
+      var(--w) 0/ 100% 25% repeat-x,
+    linear-gradient(90deg,
+      transparent 33.3%, currentColor 0 66.67%, transparent 0)
+      var(--w) 0 repeat-x,
+    linear-gradient(transparent 37.5%, currentColor 0 62.5%, transparent 0);
+  filter: drop-shadow(1px 0 currentColor);
+  animation: logo-scan 2s ease-in-out infinite;
+}
+@keyframes logo-scan { to { background-position: 0 0 } }
+/* === START: NEW 'A' LOGO ANIMATION === */
+
+.sidebar-logo-container {
+  color: rgb(141, 19, 19); /* This will make the SVG paths that use currentColor white */
+}
+.ui-fix .app-sidebar {
+  background: linear-gradient(180deg, #0b1220 0%, #0e172a 100%) !important;
+}
+.ui-fix .app-sidebar button {
+  transition: background .2s ease, color .2s ease;
+}
+.ui-fix .app-sidebar::-webkit-scrollbar { width: 8px; }
+.ui-fix .app-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,.3);
+  border-radius: 9999px;
+}
+/* Sidebar: no visible scrollbars */
+.ui-fix .app-sidebar .flex-1 {
+  overflow-y: auto;         /* keeps it scrollable if needed */
+  overflow-x: hidden;       /* prevents that tiny horizontal bar */
+  scrollbar-width: none;    /* Firefox */
+}
+.ui-fix .app-sidebar .flex-1::-webkit-scrollbar { display: none; } /* WebKit */
+/* Inputs (builder + public view) */
+.ui-fix input[type="text"],
+.ui-fix input[type="email"],
+.ui-fix input[type="tel"],
+.ui-fix input[type="url"],
+.ui-fix input[type="date"],
+.ui-fix input[type="file"],
+.ui-fix select,
+.ui-fix textarea {
+  border-radius: 10px;
+  border-color: var(--field-bdr, var(--studio-border));
+  background: var(--field-bg, #fff);
+  color: var(--studio-text);
+  transition: box-shadow .15s ease, border-color .15s ease, transform .06s ease;
+}
+
+.ui-fix input:focus,
+.ui-fix select:focus,
+.ui-fix textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--studio-primary) 70%, #c7d2fe);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--studio-primary) 18%, transparent);
+}
+/* Only target inputs inside the Settings tab */
+.ui-fix .builder-main .settings-panel input[type="url"],
+.ui-fix .builder-main .settings-panel input[type="text"],
+.ui-fix .builder-main .settings-panel select,
+.ui-fix .builder-main .settings-panel textarea {
+  background: #ffffff !important;  /* always white */
+  color: #000000 !important;       /* always black */
+  border-color: var(--studio-border) !important; /* neutral border */
+}
+.ui-fix .builder-main .settings-pane input[type="url"],
+.ui-fix .builder-main .settings-pane input[type="text"],
+.ui-fix .builder-main .settings-pane select,
+.ui-fix .builder-main .settings-pane textarea {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-color: var(--studio-border) !important;
+}
+
