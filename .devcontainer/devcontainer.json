@@ -1,0 +1,43 @@
+{
+  "name": "Form Builder Dev Container",
+
+  // Use your existing Dockerfile to build the development environment.
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+     "target": "build",
+    // We pass the local .env file into the container for Supabase keys.de
+    "args": {
+      "SUPABASE_URL": "${localEnv:VITE_SUPABASE_URL}",
+      "SUPABASE_ANON_KEY": "${localEnv:VITE_SUPABASE_ANON_KEY}"
+    }
+  },
+
+  // Forward the Vite dev server port.
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite App",
+      "onAutoForward": "openBrowser"
+    }
+  },
+
+  // Automatically install these VS Code extensions inside the container.
+ // In .devcontainer/devcontainer.json
+
+"customizations": {
+  "vscode": {
+    "settings": {
+      "git.path": "/usr/bin/git"
+    },
+    "extensions": [
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss"
+    ]
+  }
+},
+
+  // Run 'npm install' automatically after the container is created.
+  "postCreateCommand": "npm install"
+}
