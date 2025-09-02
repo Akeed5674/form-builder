@@ -402,6 +402,18 @@ const DEFAULT_CONFIG = {
 /* -------------------------------------------------------
    ICONS
 ------------------------------------------------------- */
+// Add this new icon component to your App.jsx file
+const MagicWandIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+    <path d="M3 21l3 -3" />
+    <path d="M12 12l3 -3" />
+    <path d="M6 18l3 -3" />
+    <path d="M9 15l3 -3" />
+    <path d="M18 6l3 -3" />
+    <path d="M3 3l18 18" />
+  </svg>
+);
 const IconGrip = () => (
   <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor">
     <circle cx="9" cy="7" r="1"/><circle cx="15" cy="7" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="17" r="1"/><circle cx="15" cy="17" r="1"/>
@@ -836,8 +848,18 @@ const FormField = ({
     </div>
   );
 };
-
-
+ const Row = ({ label, children }) => (
+    <div className="mb-4">
+      <div className="text-xs font-medium text-slate-500 mb-1">{label}</div>
+      {children}
+    </div>
+  );
+const ColorPair = ({ value, onChange, inputClass = "" }) => (
+    <div className={`flex items-center gap-2 ${inputClass}`}>
+      <input value={value} onChange={onChange} className="px-2 py-1 text-sm border rounded-md w-28" />
+      <input type="color" value={value} onChange={onChange} className="h-8 w-8 rounded border" />
+    </div>
+  );
 /* -------------------------------------------------------
    PANELS
 ------------------------------------------------------- */
@@ -850,19 +872,8 @@ function StylingPanel({ styles, setStyles, formTitle, setFormTitle }) {
     r.readAsDataURL(f);
   };
 
-  const Row = ({ label, children }) => (
-    <div className="mb-4">
-      <div className="text-xs font-medium text-slate-500 mb-1">{label}</div>
-      {children}
-    </div>
-  );
+ 
 
-  const ColorPair = ({ value, onChange, inputClass = "" }) => (
-    <div className={`flex items-center gap-2 ${inputClass}`}>
-      <input value={value} onChange={onChange} className="px-2 py-1 text-sm border rounded-md w-28" />
-      <input type="color" value={value} onChange={onChange} className="h-8 w-8 rounded border" />
-    </div>
-  );
 
   return (
     <div className="panel-scroll">
@@ -1659,7 +1670,7 @@ return (
             </div>
           </div>
           <div className="flex justify-end items-center gap-2">
-            <button onClick={backToDashboard} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100">
+            <button onClick={backToDashboard} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black transition-colors">
               Back
             </button>
 
@@ -1674,8 +1685,7 @@ return (
                   config: formConfig,
                 })
               }
-              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 flex items-center gap-2"
-            >
+className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black flex items-center gap-2">
               <IconEye /> Preview
             </button>
 
@@ -1691,8 +1701,8 @@ return (
                   config: formConfig,
                 })
               }
-              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100"
-            >
+              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black">
+            
               Save
             </button>
 
@@ -1707,8 +1717,8 @@ return (
                   config: formConfig,
                 })
               }
-              className="px-4 py-1.5 rounded-md bg-indigo-600 text-sm font-medium text-white transition hover:bg-indigo-700"
-            >
+              className="px-4 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 hover:text-black">
+            
               Save & Exit
             </button>
           </div>
@@ -1722,8 +1732,7 @@ return (
 {(activeTab === 'build' || activeTab === 'styling') && (
   <aside className="builder-left bg-slate-900 rounded-xl shadow-card border border-slate-800">
     <div className="p-3 space-y-2">
-      <div className="text-slate-200 text-xs uppercase tracking-wide mb-2">Fields</div>
-
+<div className="text-slate-200 text-xs uppercase tracking-wide mb-2 font-bold text-center">Fields</div>
       <ToolboxItem type="text"     label="Text"      icon={<IconHash/>} defaultData={{ placeholder: 'Enter text', required:false }} />
       <ToolboxItem type="email"    label="Email"     icon={<IconHash/>} defaultData={{ placeholder: 'name@example.com', required:false }} />
       <ToolboxItem type="textarea" label="Textarea"  icon={<IconHash/>} defaultData={{ placeholder: 'Enter long text', required:false }} />
@@ -1822,20 +1831,28 @@ return (
     </h2>
 
     <div className="space-y-4">
-      {Array.isArray(fields) && fields.length > 0 ? (
-        fields.map((f) => (
-          <div
-            key={f.id}
-            className="p-4 border rounded-xl shadow-sm"
-            style={{
-              backgroundColor: formStyles.fieldCardBgColor,
-              borderColor: formStyles.borderColor
-            }}
-          >
-            <FieldRendererPreview field={f} formStyles={formStyles} />
-          </div>
-        ))
-      ) : (
+     {Array.isArray(fields) && fields.length > 0 ? (
+  fields.map((f) => {
+    // If the field is a button, render it without the container
+    if (f.type === 'button') {
+      return <FieldRendererPreview key={f.id} field={f} formStyles={formStyles} />;
+    }
+    
+    // Otherwise, render it with the container
+    return (
+      <div
+        key={f.id}
+        className="p-4 border rounded-xl shadow-sm"
+        style={{
+          backgroundColor: formStyles.fieldCardBgColor,
+          borderColor: formStyles.borderColor,
+        }}
+      >
+        <FieldRendererPreview field={f} formStyles={formStyles} />
+      </div>
+    );
+  })
+) : (
         <div className="p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center bg-white">
           Add some fields in the Build tab to see them here.
         </div>
@@ -2062,19 +2079,18 @@ const PreviewPage = ({ previewData, exitPreview }) => {
 
 // === AI Builder PAGE (standalone, no modal) ===
 // === AI Builder PAGE (standalone, with sidebar) ===
-const AIBuildPage = ({ forms, onBuild, onCancel, onNavigate, onLogout }) => { // ✅ Add onNavigate
+// Replace your old AIBuildPage component with this new one
 
-// Replace the entire component body with this
-  const [prompt, setPrompt] = useState(
-    "Create a signup form with Full Name (required), Email (required), Password, and a Submit button. Blue theme, Inter font. Redirect to /thanks."
-  );
+const AIBuildPage = ({ forms, onBuild, onCancel, onNavigate, onLogout }) => {
+  const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
   const handleGo = async () => {
     try {
-      setErr(""); setLoading(true);
-      await onBuild(prompt);      // parent will navigate to Builder on success
+      setErr("");
+      setLoading(true);
+      await onBuild(prompt);
     } catch (e) {
       setErr("Failed to build with AI. Try a simpler prompt.");
     } finally {
@@ -2082,46 +2098,65 @@ const AIBuildPage = ({ forms, onBuild, onCancel, onNavigate, onLogout }) => { //
     }
   };
 
+  const handleExampleClick = (examplePrompt) => {
+    setPrompt(examplePrompt);
+  };
+
   return (
     <div className="min-h-screen grid grid-cols-[14rem_1fr]">
-      {/* Left: same sidebar as dashboard */}
+      <Sidebar
+        current="ai_builder"
+        onNavigate={onNavigate}
+        formsCount={forms.length}
+        onLogout={onLogout}
+        onOpenAISection={() => {}}
+      />
 
-<Sidebar
-  current="ai_builder"
-      onNavigate={onNavigate} // ✅ Use the new onNavigate prop
-  formsCount={forms.length}
-  onLogout={onLogout}
-  onOpenAISection={() => { /* Already on this page */ }}
-/>
-
-      {/* Right: page content */}
       <div className="bg-slate-50 h-full overflow-auto">
-        <header className="h-14 flex items-center border-b bg-white px-6 sticky top-0 z-10">
-          <div className="text-lg font-semibold text-slate-800">✨ Build with AI</div>
-          <div className="ml-auto flex gap-2">
-            <button onClick={onCancel} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-50">Back</button>
-            <button
-              onClick={handleGo}
-              disabled={loading}
-              className="px-4 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:bg-indigo-400"
-            >
-              {loading ? "Building…" : "Build"}
-            </button>
+        {/* Main Content Area */}
+<main className="flex flex-col items-center justify-center min-h-full p-4 sm:p-6 pb-24">  
+   <div className="w-full max-w-3xl mx-auto">
+            
+            {/* 1. Header with Icon */}
+            <div className="text-center">
+              <div className="inline-block p-4 bg-indigo-100/50 text-indigo-600 rounded-2xl mb-4">
+                <MagicWandIcon />
+              </div>
+              <h1 className="text-4xl font-bold text-slate-800 tracking-tight">
+                Create with AI
+              </h1>
+              <p className="mt-2 text-lg text-slate-500">
+                Describe the form you want. The AI will build it for you in seconds.
+              </p>
+            </div>
+
+            {/* 2. Enhanced Text Input Area */}
+            <div className="relative mt-10">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="w-full p-4 border-2 border-slate-200/60 rounded-xl resize-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow shadow-sm hover:shadow-md text-base text-slate-700"
+                placeholder="e.g., A simple contact form with a dark theme..."
+                rows={5}
+              />
+            </div>
+
+
+            {/* 4. Action Buttons */}
+            <div className="mt-8 flex items-center gap-4">
+              <button
+                onClick={handleGo}
+                disabled={loading}
+                className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed transition-all text-base"
+              >
+                {loading ? "Building…" : "✨ Build Form"}
+              </button>
+              <button onClick={() => onCancel('forms')} className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium transition-colors">
+                Back to Forms
+              </button>
+            </div>
+             {err && <div className="mt-4 text-sm text-red-600">{err}</div>}
           </div>
-        </header>
-
-        <main className="max-w-3xl mx-auto p-6">
-          <p className="text-slate-600 text-sm mb-3">
-            Describe the form you want. The AI will return a ready-to-edit form.
-          </p>
-
-          <textarea
-            className="w-full p-3 border rounded-md min-h-[220px] bg-white"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-
-          {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
         </main>
       </div>
     </div>
@@ -2601,5 +2636,4 @@ export default function AppWrapper(){
     </div>
   );
 }
-
 

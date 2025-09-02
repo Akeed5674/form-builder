@@ -493,6 +493,7 @@ body {
   font-weight:600;
   backdrop-filter: blur(6px);
   transition: transform .12s ease, box-shadow .15s ease, background .2s ease;
+  
 }
 .cta-button:hover{
   box-shadow: 0 0 0 1px rgba(59,130,246,.35), 0 8px 22px rgba(0,0,0,.35);
