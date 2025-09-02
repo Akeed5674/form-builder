@@ -1353,21 +1353,22 @@ const Sidebar = ({ current, onNavigate, formsCount = 0, onLogout, onOpenAISectio
     </div>
   </div>
 
-  {/* Menu */}
-  <div className="sidebar__section">
-    <nav className="nav">
-      <Item id="forms" label="Forms" icon={<IconHash />} badge={formsCount} />
-      <Item id="media" label="Media" icon={<IconImage />} />
-    </nav>
-  </div>
-
-  {/* Build with AI */}
-  <div className="sidebar__section sidebar__section--pad">
-    <button className="cta-button" onClick={onOpenAISection}>
-      <span className="sparkle">✨</span>
-      <span className="cta-label">Build with AI</span>
+{/* Menu */}
+<div className="sidebar__section">
+  <nav className="nav">
+    <Item id="forms" label="Forms" icon={<IconHash />} badge={formsCount} />
+    <Item id="media" label="Media" icon={<IconImage />} />
+    
+    {/* The new Build with AI button, styled as a nav item */}
+    <button 
+      className={`nav-item ${current === 'ai_builder' ? 'is-active' : ''}`} 
+      onClick={onOpenAISection}
+    >
+      <span className="nav-icon">✨</span>
+      <span className="nav-label">Build with AI</span>
     </button>
-  </div>
+  </nav>
+</div>
 
   {/* Footer pinned to bottom */}
   <div className="sidebar__footer mt-auto p-3">
@@ -2636,4 +2637,3 @@ export default function AppWrapper(){
     </div>
   );
 }
-
