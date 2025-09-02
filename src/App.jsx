@@ -12,6 +12,368 @@ const asArray = (v) => {
   }
   return [];
 };
+// --- Robust AI call helper ---
+async function callAiBuilder(userPrompt) {
+  const BASE = import.meta.env.VITE_AI_BASE || "http://localhost:4000";
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/build-form`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: userPrompt }),
+    });
+  } catch (e) {
+    throw new Error(`Network error: ${e.message}`);
+  }
+
+  // Some servers return text on error; read as text then try JSON.
+  const raw = await res.text();
+  let data;
+  try { data = JSON.parse(raw); } 
+  catch { throw new Error(`Bad JSON from AI service: ${raw.slice(0, 160)}…`); }
+
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  }
+  // data.text is the LLM's JSON-as-string (possibly fenced)
+  return data.text;
+}
+
+// --- Color + prompt parsing helpers ---
+const COLOR_MAP = {
+  yellow: '#fde047',  // you can tweak these brand shades
+  blue:   '#60a5fa',
+  green:  '#34d399',
+  red:    '#f87171',
+  grey:'#94a3b8', 
+  purple: '#c084fc',
+  gray:   '#94a3b8',
+  black:  '#000000',
+  white:  '#ffffff',
+  orange: '#fb923c',
+  pink:   '#f472b6',
+};
+
+ // Accept any valid CSS color (named, hex, rgb/rgba, hsl/hsla)
+ const isValidCssColor = (c) => {
+   if (!c) return false;
+   const el = document.createElement('option');
+   el.style.color = '';
+   el.style.color = String(c).trim();
+   return el.style.color !== '';
+ };
+
+const toColor = (token) => {
+  if (!token) return null;
+let t = token.trim().toLowerCase();
+ if (t === 'transparent') return t;
+  // hex
+ if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(t)) return t;
+  // rgb/rgba/hsl/hsla or any named color ("navy", "teal", etc.)
+  if (isValidCssColor(t)) return t;
+  // try collapsing spaces (e.g., "light blue" -> "lightblue")
+ const collapsed = t.replace(/\s+/g, '');
+ if (collapsed !== t && isValidCssColor(collapsed)) return collapsed;
+  // fallback to our small map of brandy shades
+  return COLOR_MAP[t] || null;
+};
+
+// Find the FIRST *valid* color near a keyword, skipping filler words ("should be", etc.)
+// Find the FIRST *valid* color near a keyword, prioritizing words that come BEFORE the keyword.
+const pickColorAround = (pattern, text, preferForward = false) => {  const re = new RegExp(pattern, 'ig');
+  const TOKEN_RX = /(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+)/ig;
+  let m;
+  while ((m = re.exec(text))) {
+    const idx = m.index;
+    const hit = m[0];
+    const ahead = text.slice(idx + hit.length, idx + hit.length + 100);
+    const behind = text.slice(Math.max(0, idx - 100), idx);
+
+     const scanForward = () => {
+      const forward = [...ahead.matchAll(TOKEN_RX)];
+      for (const t of forward) {
+        const c = toColor(t[0].trim());
+        if (c) return c;
+      }
+      return null;
+    };
+    const scanBackward = () => {
+      const backward = [...behind.matchAll(TOKEN_RX)];
+      for (let i = backward.length - 1; i >= 0; i--) {
+        const c = toColor(backward[i][0].trim());
+        if (c) return c;
+      }
+      return null;
+    };
+    // Heuristic: if caller asks to prefer forward (e.g., "label color grey"),
+    // do that first; otherwise try backward first (e.g., "blue background").
+    const first = preferForward ? scanForward() : scanBackward();
+    if (first) return first;
+    const second = preferForward ? scanBackward() : scanForward();
+    if (second) return second;
+
+  }
+  return null;
+};
+// One-token color capture: hex | rgba(...) | hsla(...) | named word
+const COLOR_TOKEN_RX_STR = '(#[0-9a-f]{3,8}|rgba?\\([^)]+\\)|hsla?\\([^)]+\\)|[a-zA-Z]+)';
+
+// Build a RegExp that matches common phrasings like:
+// - set <target> to <color>
+// - make <target> <color>
+// - <target> is/should be/:/= <color>
+// - <color> for/on/in the <target>
+// - <target> in/on <color>
+const buildAssignmentPatterns = (targetRe) => [
+  // Most common authoring: "title color red", "label color grey", "header color #333"
+  new RegExp(`\\b${targetRe}\\s*color\\s*${COLOR_TOKEN_RX_STR}\\b`, 'i'),
+  // Direct adjacency: "title red" (rare, but easy to support)
+  new RegExp(`\\b${targetRe}\\s*${COLOR_TOKEN_RX_STR}\\b`, 'i'),
+  // Verbal assignments
+  new RegExp(`\\b(?:set|make)\\s+(?:the\\s+)?${targetRe}\\s+(?:to\\s+)?${COLOR_TOKEN_RX_STR}\\b`, 'i'),
+  new RegExp(`\\b${targetRe}\\s*(?:is|=|:|should\\s*be|be)\\s*${COLOR_TOKEN_RX_STR}\\b`, 'i'),
+  // Prepositional
+  new RegExp(`\\b${COLOR_TOKEN_RX_STR}\\s+(?:for|on|in)\\s+(?:the\\s+)?${targetRe}\\b`, 'i'),
+  new RegExp(`\\b${targetRe}\\s+(?:in|on)\\s+${COLOR_TOKEN_RX_STR}\\b`, 'i'),
+];
+
+// Try “assignment” capture first; if none, fall back to nearest-color heuristic.
+const resolveColorFor = (prompt, targetRe, fallbackPattern, preferForward = false) => {
+  const patterns = buildAssignmentPatterns(targetRe);
+  for (const rx of patterns) {
+    const m = rx.exec(prompt);
+    if (m) {
+      // find which group is the color (the pattern order varies)
+      // The color is the *last* capture group by construction.
+      const raw = m[m.length - 1];
+      const c = toColor(raw);
+      if (c) return c;
+    }
+  }
+ return fallbackPattern ? pickColorAround(fallbackPattern, prompt, preferForward) : null;
+};
+
+// --- Parse simple color instructions from the user's prompt ---
+// --- Parse simple color instructions from the user's prompt ---
+const stylesFromPrompt = (prompt = '') => {
+const p = (prompt || '').toLowerCase();
+  const s = {};
+
+  // helpers
+  const around = (pat) => pickColorAround(pat, p);
+ const any = (arr) => arr.join('|');
+
+  // Page vs. Form container (card)
+    // First look for explicit page/body/screen/canvas
+  const pageBgExplicit = resolveColorFor(
+    p,
+    `(?:page|body|screen|canvas)\\s*(?:background|bg|color)?`,
+    `\\b(${any(['page','body','screen','canvas'])})(\\s*(background|bg|color))?\\b`
+  );
+  // Specific "field card / card container" first (to win over generic "form background")
+  const fieldCardExplicit = resolveColorFor(
+        p,
+    `(?:field\\s*card|form\\s*card|card\\s*container|container|panel|box)\\s*(?:bg|background)?`,
+    `\\b((field\\s*card|form\\s*card|card\\s*container|container|panel|box)\\s*(bg|background))\\b`
+  );
+  // Generic card/form background (lower priority)
+  const formCardGeneric = resolveColorFor(
+   p,
+   `(?:card)\\s*(?:bg|background)?`,
+   `\\b(card\\s*(bg|background))\\b`
+ );
+  // Fields
+  const fieldBg = resolveColorFor(
+    p,
+    `(?:field|input|textbox|textarea)\\s*(?:bg|background)?`,
+    `\\b(${any(['field','input','textbox','textarea'])})\\s*(bg|background)\\b`
+  );
+  const fieldBorder = resolveColorFor(
+    p,
+    `(?:border|field\\s*border)(?:\\s*color)?`,
+    `\\b(${any(['border','field\\s*border'])})(\\s*color)?\\b`
+  );
+
+  const titleCol  = resolveColorFor(
+    p,
+    `(?:title|form\\s*title|heading|header)(?:\\s*color)?`,
+    `\\b(${any(['title','form\\s*title','heading','header'])})(\\s*color)?\\b`,
+    true
+  );
+  const labelCol  = resolveColorFor(
+    p,
+    `(?:label|labels|field\\s*label|field\\s*labels)(?:\\s*color)?`,
+    `\\b(${any(['label','labels','field\\s*label','field\\s*labels'])})(\\s*color)?\\b`,
+    true
+  );
+  const inputTxt = resolveColorFor(
+    p,
+    `(?:input|field|textbox|textarea)\\s*(?:text(?:\\s*color)?)?`,
+    `\\b(${any(['input','field','textbox','textarea'])})\\s*(text(\\s*color)?)\\b`,
+    true
+  );
+  const optionsTxt = resolveColorFor(
+    p,
+    `(?:options?|choices?|radio|checkbox)\\s*(?:text(?:\\s*color)?)?`,
+    `\\b(${any(['options','option','choices','radio','checkbox'])})\\s*(text(\\s*color)?)\\b`,
+    true
+  );
+
+
+  // Buttons / theme
+  const primary   = resolveColorFor(
+    p,
+    `(?:primary|brand|accent|theme|button|cta)(?:\\s*color)?`,
+    `\\b(${any(['primary','brand','accent','theme','button','cta'])})(\\s*color)?\\b`
+  );
+  const buttonTxt = resolveColorFor(
+    p,
+    `(?:button\\s*text|cta\\s*text|button\\s*label)(?:\\s*color)?`,
+    `\\b(${any(['button\\s*text','cta\\s*text','button\\s*label'])})(\\s*color)?\\b`
+  );
+   // Apply what we found
+ if (pageBgExplicit)     s.backgroundColor  = pageBgExplicit;
+    if (fieldCardExplicit) {
+    s.fieldCardBgColor = fieldCardExplicit;
+  } else if (formCardGeneric) {
+    s.fieldCardBgColor = formCardGeneric;
+  }
+  if (fieldBg)    s.fieldBgColor     = fieldBg;
+  if (fieldBorder)s.borderColor      = fieldBorder;
+  if (titleCol)   s.titleColor       = titleCol;
+  // If the prompt explicitly mentions a title color anywhere, let it override heuristics
+
+      const titleExplicit = resolveColorFor(
+    p,
+    `(?:form\\s*title|title|heading|header)`,
+    `\\b(${any(['form\\s*title','title','heading','header'])})\\b`
+ );
+ if (titleExplicit) s.titleColor = titleExplicit;
+  if (labelCol)   s.textColor        = labelCol;
+  if (inputTxt)   s.inputTextColor   = inputTxt;
+  if (optionsTxt) s.optionTextColor  = optionsTxt;
+  if (primary)    s.primaryColor     = primary;
+  if (buttonTxt)  s.buttonTextColor  = buttonTxt;
+    // Disambiguate "form background": page vs card
+// Disambiguate "form background": page vs card
+// Disambiguate "form background": page vs card
+const formBgOnly = resolveColorFor(
+  p,
+  '(?:form)\\s*(?:bg|background)',
+  '\\b(form\\s*(bg|background))(\\s*color)?\\b'
+);
+
+const hasExplicitCard =
+  /\b((field\s*card|form\s*card|card\s*container|container|panel|box)\s*(bg|background))\b/i.test(p);
+
+// Treat "form background" as the PAGE background by default.
+if (formBgOnly) {
+  s.backgroundColor = s.backgroundColor || formBgOnly;
+  // Only set the card/container bg if it was explicitly mentioned somewhere.
+  if (hasExplicitCard && !s.fieldCardBgColor) {
+    s.fieldCardBgColor = formBgOnly;
+  }
+}
+
+// --- Final overrides: explicit card/container wins ---
+const cardOnly = around(`\\b(card)\\s*(bg|background)\\b`);
+if (fieldCardExplicit)      s.fieldCardBgColor = fieldCardExplicit;
+else if (cardOnly)          s.fieldCardBgColor = cardOnly;
+
+// ❗️CHANGE: Only assume the card if there is NO page background and NO explicit card mention
+const genericFormBg = around(`\\b(form\\s*(bg|background))(\\s*color)?\\b`);
+if (!s.backgroundColor && !hasExplicitCard && genericFormBg && !s.fieldCardBgColor) {
+  s.fieldCardBgColor = genericFormBg;
+}
+
+// Generic background w/out qualifier -> set both so it "just works"
+
+
+  // If user said "theme color is X" but nothing else, at least color the buttons & borders nicely
+  if (s.primaryColor) {
+    if (!s.borderColor) s.borderColor = s.primaryColor;
+    // keep title readable; don't force it unless explicitly asked
+  }
+
+  // Small heuristic: “labels and title blue” → copy over if mentioned together
+ const pairJoiner = /labels?.{0,32}(?:and|&|,).{0,32}titles?|titles?.{0,32}(?:and|&|,).{0,32}labels?/i;
+// Only mirror when the prompt did NOT explicitly specify "label color"
+const labelColorExplicit = /\blabels?\s*color\b/i.test(p);
+if (!labelColorExplicit) {
+  if (!s.textColor && s.titleColor && pairJoiner.test(p)) s.textColor = s.titleColor;
+  if (!s.titleColor && s.textColor && pairJoiner.test(p)) s.titleColor = s.textColor;
+}
+
+  return s;
+};
+
+
+
+// Map loose AI style keys into your concrete keys
+const normalizeStyles = (aiStyles = {}) => {
+  const s = { ...aiStyles };
+
+  if (s.background)      s.backgroundColor   = s.background;
+  if (s.bgColor)         s.backgroundColor   = s.bgColor;
+  if (s.formBg)          s.backgroundColor   = s.formBg;
+
+  if (s.fieldColor)      s.fieldBgColor      = s.fieldColor;
+  if (s.fieldBackground) s.fieldBgColor      = s.fieldBackground;
+  if (s.inputBg)         s.fieldBgColor      = s.inputBg;
+if (s.headingColor)     s.titleColor       = s.headingColor;
+ if (s.headerColor)      s.titleColor       = s.headerColor;
+  // ⬇️ NEW: card aliases
+  if (s.cardBg)          s.fieldCardBgColor  = s.cardBg;
+  if (s.cardBackground)  s.fieldCardBgColor  = s.cardBackground;
+  if (s.fieldCardBg)     s.fieldCardBgColor  = s.fieldCardBg;
+
+  if (s.text)            s.textColor         = s.text;
+  if (s.labelColor)      s.textColor         = s.labelColor;
+  if (s.labelsColor)     s.textColor         = s.labelsColor;
+
+
+  if (s.buttonColor)     s.primaryColor      = s.buttonColor;
+  if (s.themeColor)      s.primaryColor      = s.themeColor;
+  if (s.accentColor)     s.primaryColor      = s.accentColor;
+
+
+  if (s.title)           s.titleColor        = s.title;
+  if (s.cardBg)            s.fieldCardBgColor = s.cardBg;
+if (s.cardBackground)    s.fieldCardBgColor = s.cardBackground;
+if (s.fieldCardBg)       s.fieldCardBgColor = s.fieldCardBg;
+if (s.containerBg)       s.fieldCardBgColor = s.containerBg;       // NEW
+if (s.panelBg)           s.fieldCardBgColor = s.panelBg;           // NEW
+if (s.optionColor)       s.optionTextColor  = s.optionColor;
+
+ if (s.optionsColor)      s.optionTextColor  = s.optionsColor;
+  if (s.optionsTextColor)  s.optionTextColor  = s.optionsTextColor;
+  if (s.inputText)         s.inputTextColor   = s.inputText;
+  if (s.border)            s.borderColor      = s.border;
+  if (s.buttonText || s.buttonTextColor) s.buttonTextColor = s.buttonText || s.buttonTextColor;
+ 
+
+
+  return { ...DEFAULT_STYLES, ...s };
+};
+
+
+// --- Helper: clean triple backticks and parse JSON ---
+const parseAIFormJSON = (raw) => {
+    const cleaned = String(raw || '')
+
+      try { return JSON.parse(cleaned); }
+  catch (e) {
+    // Last-ditch fix for single quotes on keys/strings
+    try {
+      const looser = cleaned
+        .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":') // unquoted keys
+        .replace(/'/g, '"'); // single to double quotes
+      return JSON.parse(looser);
+    } catch {
+      throw new Error(`Could not parse AI JSON: ${e.message}`);
+    }
+  }
+};
 
 const asObject = (v, fallback = {}) => {
   if (v && typeof v === 'object') return v;
@@ -427,38 +789,53 @@ const FieldRendererPreview = ({ field, formStyles }) => {
 /* -------------------------------------------------------
    FORM FIELD CARD (draggable)
 ------------------------------------------------------- */
-const FormField = ({ field, onRemove, onDragStart, onDrop, index, isSelected, onSelect, formStyles }) => (
-  <div
-    draggable
-    onDragStart={(e)=>onDragStart(e,index)}
-    onDrop={(e)=>onDrop(e,index)}
-    onDragOver={(e)=>e.preventDefault()}
-    onClick={(e)=>{e.stopPropagation(); onSelect(field.id);}}
-     className="group relative p-4 border rounded-xl shadow-sm hover:shadow-md transition"
-    
-    style={{
-  backgroundColor: formStyles.fieldCardBgColor,
-  borderColor: formStyles.borderColor,
-  '--field-card': formStyles.fieldCardBgColor,
-  '--field-bg': formStyles.fieldBgColor,
-  '--field-bdr': formStyles.borderColor,
-  ...(isSelected ? { outline: '2px solid', outlineOffset: '2px', outlineColor: formStyles.primaryColor } : {})
-}}
+const FormField = ({
+  field, onRemove, onDragStart, onDrop, index,
+  isSelected, onSelect, formStyles
+}) => {
+  const isButton = field.type === 'button';
 
-  >
-    <div className="absolute left-3 top-3 opacity-60"><IconGrip/></div>
-    <div className="pl-7">
-      <FieldRenderer field={field} formStyles={formStyles} />
-    </div>
-    <button
-      onClick={(e)=>{e.stopPropagation(); onRemove(field.id);}}
-      className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1.5 shadow opacity-0 group-hover:opacity-100 transition"
-      aria-label="Remove"
+  // always show the card background & border when not a button
+  const wrapperClass = isButton
+    ? 'group relative'
+    : 'group relative p-4 rounded-xl shadow-sm hover:shadow-md transition';
+
+  const wrapperStyle = isButton
+    ? {}
+    : {
+        backgroundColor: formStyles.fieldCardBgColor,   // 👈 ensure card bg visible
+        border: `1px solid ${formStyles.borderColor}`,  // 👈 explicit border
+        ...(isSelected
+          ? { outline: '2px solid', outlineOffset: 2, outlineColor: formStyles.primaryColor }
+          : {})
+      };
+
+  return (
+    <div
+      draggable
+      onDragStart={(e)=>onDragStart(e,index)}
+      onDrop={(e)=>onDrop(e,index)}
+      onDragOver={(e)=>e.preventDefault()}
+      onClick={(e)=>{e.stopPropagation(); onSelect(field.id);}}
+      className={wrapperClass + (isButton ? '' : ' bg-transparent')}  // 👈 neutralize any inherited bg
+      style={wrapperStyle}
     >
-      <IconTrash />
-    </button>
-  </div>
-);
+      <div className={isButton ? '' : 'pl-7'}>
+        <FieldRendererPreview field={field} formStyles={formStyles} />
+      </div>
+
+      <button
+        onClick={(e)=>{e.stopPropagation(); onRemove(field.id);}}
+        className={`absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1.5 shadow
+                    ${isButton ? '' : 'opacity-0 group-hover:opacity-100 transition'}`}
+        aria-label="Remove"
+        title="Remove"
+      >
+        <IconTrash />
+      </button>
+    </div>
+  );
+};
 
 
 /* -------------------------------------------------------
@@ -500,18 +877,23 @@ function StylingPanel({ styles, setStyles, formTitle, setFormTitle }) {
     onChange={(e) => setStyles((p) => ({ ...p, titleColor: e.target.value }))}
   />
 </Row>
+{/* THEME COLORS */}
 
-      <div className="mt-6">
-        <div className="text-sm font-semibold text-slate-700 mb-2">Theme Colors</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Row label="Primary">
-            <ColorPair value={styles.primaryColor} onChange={(e) => setStyles((p) => ({ ...p, primaryColor: e.target.value }))} />
-          </Row>
-          <Row label="Form Background">
-            <ColorPair value={styles.backgroundColor} onChange={(e) => setStyles((p) => ({ ...p, backgroundColor: e.target.value }))} />
-          </Row>
-        </div>
-      </div>
+<Row label="Primary color">
+  <ColorPair
+    value={styles.primaryColor}
+    onChange={(e) => setStyles((p) => ({ ...p, primaryColor: e.target.value }))}
+  />
+</Row>
+
+<Row label="Form background (page)">
+  <ColorPair
+    value={styles.backgroundColor ?? "#ffffff"}
+    onChange={(e) => setStyles((p) => ({ ...p, backgroundColor: e.target.value }))}
+  />
+</Row>
+
+
 
       {/* FIELD DEFAULTS */}
       <div className="text-sm font-semibold text-slate-700 mt-6 mb-2">Field Defaults</div>
@@ -718,6 +1100,58 @@ function FieldSettingsPanel({ field, updateField }) {
     </div>
   );
 }
+// Paste this entire block of code
+
+const BuildWithAIModal = ({ open, onClose, onSubmit }) => {
+  const [prompt, setPrompt] = useState(
+    "Create a signup form with Full Name (required), Email (required), Password, and a Submit button. Blue theme, Inter font. Redirect to /thanks."
+  );
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  if (!open) return null;
+
+  const handleGo = async () => {
+    try {
+      setErr("");
+      setLoading(true);
+      await onSubmit(prompt);
+    } catch (e) {
+      setErr(`AI build failed: ${e.message}. A basic form was loaded so you can keep going.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 grid place-items-center p-4">
+      <div className="bg-white rounded-xl border shadow-card max-w-2xl w-full">
+        <div className="p-4 border-b">
+          <div className="text-lg font-semibold">✨ Build with AI</div>
+          <div className="text-slate-500 text-sm">Describe the form you want. The AI will return a ready-to-edit form.</div>
+        </div>
+        <div className="p-4 space-y-3">
+          <textarea
+            className="w-full p-3 border rounded-md h-40"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+          {err && <div className="text-sm text-red-600">{err}</div>}
+        </div>
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 border rounded-md">Cancel</button>
+          <button
+            onClick={handleGo}
+            disabled={loading}
+            className="px-4 py-1.5 rounded-md bg-indigo-600 text-white"
+          >
+            {loading ? "Building…" : "Build"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 /* -------------------------------------------------------
@@ -770,64 +1204,96 @@ const EmbedModal = ({ formId, forms, onClose }) => {
 /* -------------------------------------------------------
    LOGIN
 ------------------------------------------------------- */
-const LoginPage = () => {
+// ---- LoginPage (drop-in replacement) ----
+// LoginPage.jsx — robust version
+const LoginPage = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
+  const [errMsg, setErrMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
+  // in LoginPage
+async function handleLogin(e) {
+  e.preventDefault();
+  setErrMsg(null);
+  setLoading(true);
+
+  const withTimeout = (p, ms = 12000) =>
+    Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))]);
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase.auth.signInWithPassword({ email, password })
+    );
 
     if (error) {
-      setError(error.message);
+      setErrMsg(error.message || 'Invalid credentials.');
+      setLoading(false);
+      return;
     }
-    // The main App component will handle switching the view on successful login
+
+    if (data?.session) {
+      onLoginSuccess?.(data.session);
+      return;
+    }
+
+    // fallback to current session (auth listener will also run)
+    const { data: now } = await supabase.auth.getSession();
+    if (now?.session) {
+      onLoginSuccess?.(now.session);
+      return;
+    }
+
+    setErrMsg('Signed in, but no session found. Please try again.');
     setLoading(false);
-  };
+  } catch (err) {
+    setErrMsg(
+      err?.message === 'timeout'
+        ? 'Could not reach the auth server (timeout). Check your Supabase URL/key and network.'
+        : `Sign-in failed: ${err?.message || 'Unknown error'}`
+    );
+    setLoading(false);
+  }
+}
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      
       <div className="bg-white border rounded-2xl shadow-card w-full max-w-md p-8">
         <h2 className="text-2xl font-bold text-slate-900 text-center">Welcome back</h2>
         <p className="text-slate-500 text-center mt-1 mb-6 text-sm">Sign in to continue</p>
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-sm text-slate-600">Email</label>
-            <input 
+            <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded-md" 
+              className="mt-1 w-full px-3 py-2 border rounded-md"
               placeholder="name@example.com"
+              autoComplete="username"
             />
           </div>
           <div>
             <label className="text-sm text-slate-600">Password</label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border rounded-md" 
+              className="mt-1 w-full px-3 py-2 border rounded-md"
               placeholder="••••••••"
+              autoComplete="current-password"
             />
           </div>
 
-          {error && (
+          {errMsg && (
             <div className="bg-red-100 border border-red-300 text-red-700 text-sm rounded-md p-3">
-              {error}
+              {errMsg}
             </div>
           )}
 
-          <button 
+          <button
             disabled={loading}
             className="w-full py-2 rounded-md bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:bg-indigo-400"
           >
@@ -838,6 +1304,8 @@ const LoginPage = () => {
     </div>
   );
 };
+
+
 // ---- BatLogo (SVG) ----
 
 /* -------------------------------------------------------
@@ -876,56 +1344,61 @@ const SvgLogo = ({ size = 64 }) => (
 
 
 // ⬇️ add onLogout to props
-const Sidebar = ({ current, onNavigate, formsCount = 0, onLogout }) => {
+// Sidebar.jsx (or keep in the same file)
+const Sidebar = ({ current, onNavigate, formsCount = 0, onLogout, onOpenAISection }) => {
   const Item = ({ id, label, icon, badge }) => {
     const active = current === id;
     return (
       <button
         onClick={() => onNavigate?.(id)}
-        className={`w-full flex items-center gap-2.5 px-3 py-2 mx-3 rounded-lg text-sm
-          ${active ? 'bg-white/10 text-white' : 'text-slate-300 hover:bg-white/5 hover:text-white'}
-        `}
+        className={`nav-item ${active ? 'is-active' : ''}`}
       >
-        <span className="opacity-90">{icon}</span>
-        <span className="flex-1 text-left truncate">{label}</span>
-        {typeof badge === 'number' && (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-md 
-            ${active ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-200'}`}>
-            {badge}
-          </span>
-        )}
+        <span className="nav-icon">{icon}</span>
+        <span className="nav-label">{label}</span>
+        {typeof badge === 'number' && <span className="badge">{badge}</span>}
       </button>
     );
   };
 
   return (
-    <aside className="app-sidebar w-56 bg-[#0b1220] text-slate-200 flex flex-col border-r border-white/10">
-      {/* centered logo */}
-      <div className="flex items-center justify-center py-5">
-        <div className="rounded-full bg-white/10 p-2">
-          <SvgLogo size={28} />
-        </div>
-      </div>
+<aside className="sidebar relative flex flex-col h-screen z-20">  <div className="sidebar__glass" />
 
-      {/* Nav */}
-      <div className="flex-1 overflow-y-auto pb-6 no-scrollbar">
-  <Item id="dashboard" label="Dashboard" icon={<IconHome/>} />
-  <Item id="forms" label="Forms" icon={<IconHash/>} badge={formsCount} />
-  <Item id="media" label="Media" icon={<IconImage/>} />
-</div>
+  {/* Centered logo */}
+  <div className="sidebar__brand">
+    <div className="brand-mark brand-mark--big">
+      <SvgLogo size={38} />
+    </div>
+  </div>
 
-      {/* Footer */}
-      <div className="px-3 py-4 border-t border-white/10">
-        <button
-          onClick={onLogout}                               
-          className="flex items-center gap-2 w-full px-3 py-2 text-xs text-slate-300 hover:text-white"
-        >
-          <IconLogout /> Logout
-        </button>
-      </div>
-    </aside>
+  {/* Menu */}
+  <div className="sidebar__section">
+    <nav className="nav">
+      <Item id="forms" label="Forms" icon={<IconHash />} badge={formsCount} />
+      <Item id="media" label="Media" icon={<IconImage />} />
+    </nav>
+  </div>
+
+  {/* Build with AI */}
+  <div className="sidebar__section sidebar__section--pad">
+    <button className="cta-button" onClick={onOpenAISection}>
+      <span className="sparkle">✨</span>
+      <span className="cta-label">Build with AI</span>
+    </button>
+  </div>
+
+  {/* Footer pinned to bottom */}
+  <div className="sidebar__footer mt-auto p-3">
+    <button className="link-ghost" onClick={onLogout}>
+      <span className="nav-icon"><IconLogout /></span>
+      <span className="nav-label">Logout</span>
+    </button>
+  </div>
+</aside>
+
+
   );
 };
+
 
  const DashboardHeader = () => (
   <header className="h-14 sticky top-0 z-40 flex items-center border-b border-slate-800 px-6 bg-slate-900 text-white">
@@ -934,7 +1407,7 @@ const Sidebar = ({ current, onNavigate, formsCount = 0, onLogout }) => {
 );
 
 
-const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateForm, deleteForm, shareForm, onLogout }) => {
+const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateForm, deleteForm, shareForm, onLogout, onOpenAISection }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('forms'); // State to control the view
 
@@ -944,13 +1417,15 @@ const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateF
   );
 
   return (
-    <div className="min-h-screen grid grid-cols-[14rem_1fr]">
-      <Sidebar 
-        current={activeTab} 
-        onNavigate={setActiveTab}
-        formsCount={forms.length} 
-        onLogout={onLogout} 
-      />
+<div className="min-h-screen grid grid-cols-[14rem_1fr]">   <Sidebar
+  current={activeTab}
+  onNavigate={setActiveTab}
+  formsCount={forms.length}
+  onLogout={onLogout}
+  onOpenAISection={onOpenAISection}
+/>
+
+
 
       <div className="bg-slate-50">
         <div className="p-6">
@@ -1039,6 +1514,116 @@ const FormBuilderPage = ({ initialForm, saveForm, saveAndExit, backToDashboard, 
   const [formName, setFormName] = useState(initialForm.name);
   const [formStyles, setFormStyles] = useState(asObject(initialForm.styles, DEFAULT_STYLES));
   const [formConfig, setFormConfig] = useState(asObject(initialForm.config, DEFAULT_CONFIG));
+const [showAIModal, setShowAIModal] = useState(false);
+
+const buildFormWithAI = async (userPrompt) => {
+  let ai;
+  try {
+    const llmText = await callAiBuilder(userPrompt);
+    ai = parseAIFormJSON(llmText);
+  } catch (e) {
+    console.error('AI builder failed:', e);
+    // Fallback: minimal usable form so the user is never stuck
+    ai = {
+      name: "New Form",
+      title: "Untitled Form",
+      fields: [
+        { type: "text", label: "Your Name", required: true, placeholder: "Jane Doe" },
+        { type: "email", label: "Email", required: true, placeholder: "name@example.com" },
+        { type: "button", label: "Submit" }
+      ],
+      styles: {},
+      config: {}
+    };
+  }
+
+  // Merge AI styles with any color hints detected in the user's prompt
+  const finalStyles = normalizeStyles({
+    ...(ai.styles || {}),
+    ...stylesFromPrompt(userPrompt),
+  });
+
+
+  // Build fields with a fallback when the prompt says "two text fields"
+  const wantsTwoText = /(^|\\b)two\\b.*\\btext\\s*fields?/i.test(userPrompt);
+
+// Start with AI fields (or empty)
+let newFields = Array.isArray(ai.fields) ? ai.fields : [];
+
+// --- Normalize each field ---
+// - Ensure id
+// - Normalize options: objects -> strings
+// - Coerce type to a known string
+const normalizeField = (f) => {
+  const id = f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  let options = Array.isArray(f.options) ? f.options : [];
+  // If options are objects like {label: "A"} or {value: "A"}, turn them into strings.
+  options = options.map((o) => {
+    if (typeof o === 'string') return o;
+    if (o && typeof o === 'object') return o.label || o.value || '';
+    return '';
+  }).filter(Boolean);
+
+  // Type from LLMs can be capitalized or variants; normalize to our renderer
+  const t = String(f.type || '').toLowerCase();
+  const typeMap = {
+    text: 'text',
+    input: 'text',
+    email: 'email',
+    textarea: 'textarea',
+    select: 'dropdown',
+    dropdown: 'dropdown',
+    radio: 'radio',
+    radiogroup: 'radio',
+    checkbox: 'checkbox',
+    checkboxes: 'checkbox',
+    date: 'date',
+    file: 'file',
+    phone: 'phone',
+    tel: 'phone',
+    html: 'html',
+    button: 'button',
+    submit: 'button',
+  };
+
+  const type = typeMap[t] || 'text';
+
+  return { id, ...f, type, options };
+};
+
+newFields = newFields.map(normalizeField);
+
+// --- Satisfy "two text fields" without deleting other fields ---
+if (wantsTwoText) {
+  const existingText = newFields.filter((f) => f.type === 'text');
+  const needed = Math.max(0, 2 - existingText.length);
+  for (let i = 0; i < needed; i++) {
+    newFields.push(
+      normalizeField({
+        type: 'text',
+        label: `Text Field ${existingText.length + i + 1}`,
+        placeholder: 'Enter text',
+      })
+    );
+  }
+}
+
+ setFields(newFields);
+
+
+
+  // Apply to builder state
+ 
+  setFormStyles(finalStyles);
+  setFormTitle(ai.title || "Untitled Form");
+  setFormName(ai.name || "Untitled Form");
+  setFormConfig(asObject(ai.config, DEFAULT_CONFIG));
+  setShowAIModal(false);
+}; // <-- IMPORTANT: function closed here
+
+
+
+
   
   const [selectedFieldId, setSelectedFieldId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -1077,7 +1662,10 @@ const FormBuilderPage = ({ initialForm, saveForm, saveAndExit, backToDashboard, 
 
   const selectedField = Array.isArray(fields) ? fields.find(f => f.id === selectedFieldId) : null;
 
-  return (
+  // ===== inside FormBuilderPage =====
+return (
+  <>
+    {/* MAIN BUILDER SCREEN */}
     <div className="min-h-screen bg-slate-100 flex flex-col">
       {/* Top Bar */}
       <div className="bg-gray-900 text-white shadow-md">
@@ -1085,149 +1673,352 @@ const FormBuilderPage = ({ initialForm, saveForm, saveAndExit, backToDashboard, 
           <div className="flex items-center gap-3" />
           <div className="flex justify-center items-center gap-4">
             <div className="flex items-center gap-8">
-              {['settings', 'build', 'styling'].map(t => (
-                <button key={t} onClick={() => setActiveTab(t)} className={`uppercase text-sm tracking-wide transition ${activeTab === t ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1' : 'text-gray-300 hover:text-white'}`}>
+              {['settings', 'build', 'styling'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setActiveTab(t)}
+                  className={`uppercase text-sm tracking-wide transition ${
+                    activeTab === t ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1' : 'text-gray-300 hover:text-white'
+                  }`}
+                >
                   {t}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex justify-end items-center gap-2">
-            <button onClick={backToDashboard} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100">Back</button>
-            <button onClick={() => previewForm({ ...initialForm, name: formName, title: formTitle, fields, styles: formStyles, config: formConfig })} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 flex items-center gap-2">
+            <button onClick={backToDashboard} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100">
+              Back
+            </button>
+
+            <button
+              onClick={() =>
+                previewForm({
+                  ...initialForm,
+                  name: formName,
+                  title: formTitle,
+                  fields,
+                  styles: formStyles,
+                  config: formConfig,
+                })
+              }
+              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 flex items-center gap-2"
+            >
               <IconEye /> Preview
             </button>
-            <button onClick={() => saveForm({ ...initialForm, name: formName, title: formTitle, fields, styles: formStyles, config: formConfig })} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100">Save</button>
-            <button onClick={() => saveAndExit({ ...initialForm, name: formName, title: formTitle, fields, styles: formStyles, config: formConfig })} className="px-4 py-1.5 rounded-md bg-indigo-600 text-sm font-medium text-white transition hover:bg-indigo-700">Save & Exit</button>
+
+
+            <button
+              onClick={() =>
+                saveForm({
+                  ...initialForm,
+                  name: formName,
+                  title: formTitle,
+                  fields,
+                  styles: formStyles,
+                  config: formConfig,
+                })
+              }
+              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100"
+            >
+              Save
+            </button>
+
+            <button
+              onClick={() =>
+                saveAndExit({
+                  ...initialForm,
+                  name: formName,
+                  title: formTitle,
+                  fields,
+                  styles: formStyles,
+                  config: formConfig,
+                })
+              }
+              className="px-4 py-1.5 rounded-md bg-indigo-600 text-sm font-medium text-white transition hover:bg-indigo-700"
+            >
+              Save & Exit
+            </button>
           </div>
         </div>
       </div>
 
       {/* Main Content Grid */}
       <div className="builder-grid grid gap-4 p-4 flex-1 max-w-full">
-        {/* Left Panel (Toolbox) */}
-        {(activeTab === 'build' || activeTab === 'styling') && (
-          <aside className="builder-left bg-slate-900 rounded-xl shadow-card border border-slate-800">
-            <div className="p-3 space-y-2">
-              <ToolboxItem type="text" label="Text" icon={<IconDoc />} defaultData={{ label: 'Text', placeholder: 'Enter text' }} />
-              <ToolboxItem type="email" label="Email" icon={<IconDoc />} defaultData={{ label: 'Email', placeholder: 'name@example.com' }} />
-              <ToolboxItem type="textarea" label="Textarea" icon={<IconDoc />} defaultData={{ label: 'Message', placeholder: 'Enter message' }} />
-              <ToolboxItem type="dropdown" label="Dropdown" icon={<IconDoc />} defaultData={{ label: 'Select one', options: ['Option 1', 'Option 2'] }} />
-              <ToolboxItem type="radio" label="Radio" icon={<IconDoc />} defaultData={{ label: 'Choose one', options: ['A', 'B'] }} />
-              <ToolboxItem type="checkbox" label="Checkbox Group" icon={<IconDoc />} defaultData={{ label: 'Select choices', options: ['Choice 1', 'Choice 2'], required: false }} />
-              <ToolboxItem type="date" label="Date" icon={<IconDoc />} defaultData={{ label: 'Date' }} />
-              <ToolboxItem type="file" label="File" icon={<IconDoc />} defaultData={{ label: 'Upload file' }} />
-              <ToolboxItem type="phone" label="Phone" icon={<IconDoc />} defaultData={{ label: 'Phone', placeholder: '(555) 555-5555' }} />
-              <ToolboxItem type="html" label="HTML Block" icon={<IconDoc />} defaultData={{ label: 'Rich content', content: '<p>Add HTML here</p>' }} />
-              <ToolboxItem type="button" label="Submit Button" icon={<IconDoc />} defaultData={{ type: 'button', label: 'Submit' }} />
-            </div>
-          </aside>
-        )}
+        {/* LEFT: Toolbox (build & styling tabs) */}
+        {/* LEFT: Toolbox (build & styling tabs) */}
+{(activeTab === 'build' || activeTab === 'styling') && (
+  <aside className="builder-left bg-slate-900 rounded-xl shadow-card border border-slate-800">
+    <div className="p-3 space-y-2">
+      <div className="text-slate-200 text-xs uppercase tracking-wide mb-2">Fields</div>
 
-        {/* Center Canvas */}
+      <ToolboxItem type="text"     label="Text"      icon={<IconHash/>} defaultData={{ placeholder: 'Enter text', required:false }} />
+      <ToolboxItem type="email"    label="Email"     icon={<IconHash/>} defaultData={{ placeholder: 'name@example.com', required:false }} />
+      <ToolboxItem type="textarea" label="Textarea"  icon={<IconHash/>} defaultData={{ placeholder: 'Enter long text', required:false }} />
+      <ToolboxItem type="dropdown" label="Dropdown"  icon={<IconHash/>} defaultData={{ options:['Option 1','Option 2'], required:false }} />
+      <ToolboxItem type="radio"    label="Radio"     icon={<IconHash/>} defaultData={{ options:['Option A','Option B'], required:false }} />
+      <ToolboxItem type="checkbox" label="Checkbox"  icon={<IconHash/>} defaultData={{ options:['Item 1','Item 2'], required:false }} />
+      <ToolboxItem type="date"     label="Date"      icon={<IconHash/>} defaultData={{ required:false }} />
+      <ToolboxItem type="file"     label="File"      icon={<IconHash/>} defaultData={{ required:false }} />
+      <ToolboxItem type="phone"    label="Phone"     icon={<IconHash/>} defaultData={{ placeholder: '(555) 555-5555', required:false }} />
+      <ToolboxItem type="button"   label="Button"    icon={<IconHash/>} defaultData={{ label:'Submit' }} />
+      <ToolboxItem type="html"     label="HTML Block" icon={<IconHash/>} defaultData={{ label:'Note', content:'<p>Edit me</p>' }} />
+    </div>
+  </aside>
+)}
+
+
+        {/* CENTER: Canvas / Settings */}
         <main
-          className={`builder-main rounded-xl shadow-card border p-6 panel-scroll ${dragOver ? 'ring-2 ring-cyan-400' : ''} ${activeTab === 'settings' ? 'col-span-3' : ''}`}
+          className={`builder-main rounded-xl shadow-card border p-6 panel-scroll ${
+            dragOver ? 'ring-2 ring-cyan-400' : ''
+          } ${activeTab === 'settings' ? 'col-span-3' : ''}`}
           onDrop={activeTab === 'build' ? addFromToolbox : undefined}
-          onDragOver={activeTab === 'build' ? (e) => { e.preventDefault(); setDragOver(true); } : undefined}
+          onDragOver={
+            activeTab === 'build'
+              ? (e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }
+              : undefined
+          }
+          
           onDragLeave={activeTab === 'build' ? () => setDragOver(false) : undefined}
-          style={{ 
-            fontFamily: formStyles.fontFamily, 
+          style={{
+            fontFamily: formStyles.fontFamily,
             backgroundColor: activeTab !== 'settings' ? formStyles.backgroundColor : '#ffffff',
           }}
-          onClick={() => { setSelectedFieldId(null); }}
+          onClick={() => {
+            setSelectedFieldId(null);
+          }}
         >
-          {/* BUILD CANVAS */}
-          {activeTab === 'build' && (
-            <div className="mx-auto" style={{ maxWidth: `${formStyles.formWidthPct || 100}%` }}>
-              {formStyles.logoUrl && <img alt="logo" src={formStyles.logoUrl} className="max-h-16 object-contain mx-auto mb-4" />}
-              <div className="text-center mb-6">
-                <h1 className="text-2xl font-bold" style={{ color: formStyles.titleColor || formStyles.textColor }}>
-                  {formTitle}
-                </h1>
-              </div>
-              <div className="space-y-4">
-                {fields.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-slate-400 border-2 border-dashed rounded-xl">
-                    <svg className="w-20 h-20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-                    <p className="font-medium">Drag components here</p>
-                  </div>
-                ) : fields.map((field, i) => (
-                  <FormField key={field.id} index={i} field={field} onRemove={removeField} onDragStart={onDragStartExisting} onDrop={onDropExisting} isSelected={selectedFieldId === field.id} onSelect={setSelectedFieldId} formStyles={formStyles} />
-                ))}
-              </div>
-            </div>
-          )}
+          {/* --- BUILD TAB CONTENT --- */}
+          {/* Always-visible title header */}
 
-          {/* STYLING PREVIEW */}
-          {activeTab === 'styling' && (
-            <div className="mx-auto rounded-2xl shadow-lg p-6 sm:p-8 h-full overflow-y-auto" style={{ maxWidth: `${formStyles.formWidthPct || 100}%`, backgroundColor: formStyles.backgroundColor }}>
-              {formStyles.logoUrl && <img src={formStyles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />}
-              <h1 className="text-2xl font-bold text-center mb-6" style={{ color: formStyles.titleColor || formStyles.textColor }}>
-                {formTitle}
-              </h1>
-              <div className="space-y-4">
-                {fields.length === 0 ? (
-                  <div className="text-center text-slate-400 text-sm py-10">Add fields in the 'Build' tab to see them here.</div>
-                ) : (
-                  fields.map((f) => (
-                    <div key={f.id} className="p-4 border rounded-xl shadow-sm" style={{ backgroundColor: formStyles.fieldCardBgColor, borderColor: formStyles.borderColor }}>
-                      <FieldRendererPreview field={f} formStyles={formStyles} />
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+{activeTab === 'build' && (
+  <div className="mx-auto space-y-3" style={{ maxWidth: `${formStyles.formWidthPct || 100}%` }}>
+    <h1
+     className="text-2xl font-bold mb-6 text-center"
+      style={{ color: formStyles.titleColor || formStyles.textColor }}
+    >
+      {formTitle || 'Untitled Form'}
+    </h1>
 
-          {/* SETTINGS VIEW */}
-          {activeTab === 'settings' && (
-             <div className="mx-auto max-w-5xl space-y-8">
-              <div className="text-center mb-6"><h1 className="text-2xl font-bold text-slate-900">{formTitle}</h1></div>
-              <section className="bg-white border rounded-2xl shadow-sm p-6">
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Form Name (Internal)</label>
-                    <input value={formName} onChange={(e) => setFormName(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-lg"/>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Display Title (Public)</label>
-                    <input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-lg"/>
-                  </div>
-                </div>
-              </section>
-              <section className="bg-white border rounded-2xl shadow-sm p-6">
-                <div className="text-sm font-semibold text-slate-800 mb-3">Submission Behavior</div>
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Redirect URL (optional)</label>
-                    <input type="url" placeholder="https://example.com/thank-you" value={formConfig.submit.redirectUrl} onChange={(e) => setFormConfig((c) => ({ ...c, submit: { ...c.submit, redirectUrl: e.target.value } }))} className="mt-1 w-full px-3 py-2 border rounded-lg"/>
-                  </div>
-                  <div className="flex items-end">
-                    <label className="inline-flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={formConfig.submit.openInNewTab} onChange={(e) => setFormConfig((c) => ({ ...c, submit: { ...c.submit, openInNewTab: e.target.checked } }))} />
-                      Open redirect in a new tab
-                    </label>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
+    {fields.length === 0 && (
+      <div
+        className={`p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center ${
+          dragOver ? 'border-cyan-400 bg-cyan-50/40' : 'border-slate-300 bg-white'
+        }`}
+      >
+        Drag items from the left to add fields
+      </div>
+    )}
+
+    {fields.map((f, i) => (
+      <FormField
+        key={f.id}
+        field={f}
+        index={i}
+        formStyles={formStyles}
+        isSelected={selectedFieldId === f.id}
+        onSelect={setSelectedFieldId}
+        onRemove={(id) => removeField(id)}
+        onDragStart={onDragStartExisting}
+        onDrop={onDropExisting}
+      />
+    ))}
+  </div>
+)}
+
+
+
+          {/* --- STYLING TAB CONTENT --- */}
+       {activeTab === 'styling' && (
+  <div
+    className="mx-auto rounded-2xl shadow-lg p-6 sm:p-8 h-full overflow-y-auto"
+    style={{ maxWidth: `${formStyles.formWidthPct || 100}%`, backgroundColor: formStyles.backgroundColor }}
+  >
+    {formStyles.logoUrl && (
+      <img src={formStyles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />
+    )}
+
+    <h2
+      className="text-2xl font-bold text-center mb-6"
+      style={{ color: formStyles.titleColor || formStyles.textColor }}
+    >
+      {formTitle || 'Untitled Form'}
+    </h2>
+
+    <div className="space-y-4">
+      {Array.isArray(fields) && fields.length > 0 ? (
+        fields.map((f) => (
+          <div
+            key={f.id}
+            className="p-4 border rounded-xl shadow-sm"
+            style={{
+              backgroundColor: formStyles.fieldCardBgColor,
+              borderColor: formStyles.borderColor
+            }}
+          >
+            <FieldRendererPreview field={f} formStyles={formStyles} />
+          </div>
+        ))
+      ) : (
+        <div className="p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center bg-white">
+          Add some fields in the Build tab to see them here.
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
+          {/* --- SETTINGS TAB CONTENT --- */}
+        {activeTab === 'settings' && (
+  <div className="mx-auto max-w-3xl space-y-8">
+    {/* Title header always visible */}
+   <div className="text-center mb-6">
+</div>
+
+
+    {/* Basic */}
+    <section className="p-4 border rounded-xl bg-white space-y-4">
+      <div className="text-sm font-semibold text-slate-700">Basics</div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Form Name</label>
+        <input
+          value={formName}
+          onChange={(e) => setFormName(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Form Title (shown to users)</label>
+        <input
+          value={formTitle}
+          onChange={(e) => setFormTitle(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+        />
+      </div>
+    </section>
+
+    {/* Submit behavior */}
+    <section className="p-4 border rounded-xl bg-white space-y-4">
+      <div className="text-sm font-semibold text-slate-700">Submit Behavior</div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Redirect URL</label>
+        <input
+          value={formConfig.submit?.redirectUrl || ''}
+          onChange={(e) => setFormConfig((p) => ({ ...p, submit: { ...p.submit, redirectUrl: e.target.value } }))}
+          placeholder="/thanks"
+          className="w-full px-3 py-2 border rounded-md"
+        />
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={!!formConfig.submit?.openInNewTab}
+          onChange={(e) => setFormConfig((p) => ({ ...p, submit: { ...p.submit, openInNewTab: e.target.checked } }))}
+        />
+        Open in new tab
+      </label>
+    </section>
+
+    {/* Email notifications */}
+    <section className="p-4 border rounded-xl bg-white space-y-4">
+      <div className="text-sm font-semibold text-slate-700">Email Notifications</div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={!!formConfig.email?.enabled}
+          onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, enabled: e.target.checked } }))}
+        />
+        Enable
+      </label>
+
+      {formConfig.email?.enabled && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">From Name</label>
+            <input
+              value={formConfig.email.fromName}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, fromName: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">From Email</label>
+            <input
+              value={formConfig.email.fromEmail}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, fromEmail: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Additional “To” (comma separated)</label>
+            <input
+              value={formConfig.email.additionalTo}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, additionalTo: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Subject</label>
+            <input
+              value={formConfig.email.subject}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, subject: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Body</label>
+            <textarea
+              value={formConfig.email.body}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, body: e.target.value } }))}
+              rows={4}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  </div>
+)}
+
         </main>
 
-        {/* Right Panel */}
-        {(activeTab === 'build' || activeTab === 'styling') && (
-          <aside className="builder-right bg-white rounded-xl shadow-card border">
-            <div className="p-4 h-full">
-              {activeTab === 'build' && <FieldSettingsPanel field={selectedField} updateField={updateField} />}
-{activeTab === 'styling' && <StylingPanel styles={formStyles} setStyles={setFormStyles} />}            </div>
-          </aside>
-        )}
+       {/* RIGHT: Field/Styling panels */}
+{(activeTab === 'build' || activeTab === 'styling') && (
+  <aside className="builder-right bg-white rounded-xl shadow-card border">
+    <div className="p-4 h-full">
+      {activeTab === 'build'  && <FieldSettingsPanel field={selectedField} updateField={updateField} />}
+      {activeTab === 'styling' && (
+        <StylingPanel
+          styles={formStyles}
+          setStyles={setFormStyles}
+          formTitle={formTitle}
+          setFormTitle={setFormTitle}
+        />
+      )}
+    </div>
+  </aside>
+)}
+
       </div>
     </div>
-  );
-};
 
+    {/* ✅ The modal is a sibling so it overlays the builder when open */}
+    <BuildWithAIModal
+      open={showAIModal}
+      onClose={() => setShowAIModal(false)}
+      onSubmit={buildFormWithAI}
+    />
+   </>
+);
+};
+ 
 const PreviewPage = ({ previewData, exitPreview }) => {
+
   return (
     <div
       className="min-h-screen p-6"
@@ -1267,22 +2058,23 @@ const PreviewPage = ({ previewData, exitPreview }) => {
             alert('Form submitted!');
           }}
         >
-          {previewData.fields.map((f) => (
-            <div
-              key={f.id}
-              className="p-4 border rounded-xl shadow-sm"
-              style={{
-  backgroundColor: previewData.styles.fieldCardBgColor,
-  borderColor: previewData.styles.borderColor,
-  '--field-bg': previewData.styles.fieldBgColor,
-  '--field-bdr': previewData.styles.borderColor,
-}}
-            >
-              <FieldRendererPreview field={f} formStyles={previewData.styles} />
-            </div>
-          ))}
+      {previewData.fields.map((f) => {
+  const content = <FieldRendererPreview key={f.id} field={f} formStyles={previewData.styles} />;
+
+  if (f.type === 'button') return <div key={f.id}>{content}</div>;  // no card
+
+  return (
+    <div key={f.id} className="p-4 border rounded-xl shadow-sm"
+         style={{ backgroundColor: previewData.styles.fieldCardBgColor,
+                  borderColor: previewData.styles.borderColor }}>
+      {content}
+    </div>
+  );
+})}
+
         </form>
       </div>
+      
 
       <div className="text-center mt-6">
         <button
@@ -1296,16 +2088,83 @@ const PreviewPage = ({ previewData, exitPreview }) => {
   );
 };
 
- 
+// === AI Builder PAGE (standalone, no modal) ===
+// === AI Builder PAGE (standalone, with sidebar) ===
+const AIBuildPage = ({ forms, onBuild, onCancel, onLogout }) => {
 
+// Replace the entire component body with this
+  const [prompt, setPrompt] = useState(
+    "Create a signup form with Full Name (required), Email (required), Password, and a Submit button. Blue theme, Inter font. Redirect to /thanks."
+  );
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
+  const handleGo = async () => {
+    try {
+      setErr(""); setLoading(true);
+      await onBuild(prompt);      // parent will navigate to Builder on success
+    } catch (e) {
+      setErr("Failed to build with AI. Try a simpler prompt.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen grid grid-cols-[14rem_1fr]">
+      {/* Left: same sidebar as dashboard */}
+      <Sidebar
+        current="ai_builder"               // Use a static ID since there are no tabs here
+        onNavigate={(id) => { if (id === 'forms') onCancel(); }} // Navigate back if "Forms" is clicked
+        formsCount={forms.length}
+        onLogout={onLogout}
+        onOpenAISection={() => { /* Already on this page */ }}
+      />
+
+      {/* Right: page content */}
+      <div className="bg-slate-50 h-full overflow-auto">
+        <header className="h-14 flex items-center border-b bg-white px-6 sticky top-0 z-10">
+          <div className="text-lg font-semibold text-slate-800">✨ Build with AI</div>
+          <div className="ml-auto flex gap-2">
+            <button onClick={onCancel} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-50">Back</button>
+            <button
+              onClick={handleGo}
+              disabled={loading}
+              className="px-4 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:bg-indigo-400"
+            >
+              {loading ? "Building…" : "Build"}
+            </button>
+          </div>
+        </header>
+
+        <main className="max-w-3xl mx-auto p-6">
+          <p className="text-slate-600 text-sm mb-3">
+            Describe the form you want. The AI will return a ready-to-edit form.
+          </p>
+
+          <textarea
+            className="w-full p-3 border rounded-md min-h-[220px] bg-white"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+
+          {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
+        </main>
+      </div>
+    </div>
+  );
+};
 
 /* -------------------------------------------------------
    MAIN APP CONTROLLER
 ------------------------------------------------------- */
 function App() {
+  
+
+  // ---- state (top) ----
   const [session, setSession] = useState(null);
-  const [view, setView] = useState('dashboard'); // Default to dashboard, session check will handle login
+  const [booting, setBooting] = useState(true);
+  const [view, setView] = useState('dashboard');
   const [forms, setForms] = useState([]);
   const [currentFormId, setCurrentFormId] = useState(null);
   const [previewData, setPreviewData] = useState(null);
@@ -1313,71 +2172,123 @@ function App() {
   const [embedModalFormId, setEmbedModalFormId] = useState(null);
   const [publicFormData, setPublicFormData] = useState(null);
 
-  // --- Main Effect: Manages the user session ---
+  // ---- effects (still before any return) ----
+  // Single auth effect: get initial session + listen for changes
   useEffect(() => {
-    // Check for an active session when the app loads
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-
-    // Listen for changes in authentication state (login, logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (_event === 'SIGNED_IN') {
-        setView('dashboard'); // Go to dashboard on login
+    let mounted = true;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (mounted) {
+        setSession(session);
+        setBooting(false);
       }
-    });
+    })();
+   const { data: { subscription } } =
+  supabase.auth.onAuthStateChange((event, sess) => {
+    console.log('[auth]', event, !!sess);
+    setSession(sess);
+  });
 
-    // Cleanup the listener when the component unmounts
-    return () => subscription.unsubscribe();
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
-
-  // --- Second Effect: Handles routing and fetching initial data from Supabase ---
+  // Routing / initial data (depends on session)
   useEffect(() => {
-    // This effect should only run if the user is logged in.
     if (!session) return;
-
     const hash = window.location.hash;
-
     if (hash.startsWith('#form-data/')) {
       try {
-        const compressed = hash.substring(11); // Length of '#form-data/'
+        const compressed = hash.substring(11);
         const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
         const formData = JSON.parse(decompressed);
-        if (formData) {
-          setPublicFormData(formData);
-          setView('public_form');
-        }
-      } catch (e) {
-        console.error("Failed to parse form data from URL", e);
-      }
-    } else {
-      const fetchForms = async () => {
-        const { data, error } = await supabase
-          .from('forms')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching forms:', error);
-        } else {
-          const normalized = (data || []).map(f => ({
-            ...f,
-            fields: asArray(f.fields),
-            styles: asObject(f.styles, DEFAULT_STYLES),
-            config: asObject(f.config, DEFAULT_CONFIG),
-          }));
-          setForms(normalized);
-        }
-      };
-
-      fetchForms();
-      // Still use localStorage for non-critical UI state
-      setView(localStorage.getItem('view') || 'dashboard'); // Default to dashboard now
-      setCurrentFormId(localStorage.getItem('currentFormId'));
+        if (formData) { setPublicFormData(formData); setView('public_form'); }
+      } catch (e) { console.error("Failed to parse form data from URL", e); }
+      return;
     }
-  }, [session]); // Re-run this effect when the session changes
+    (async () => {
+      const { data, error } = await supabase.from('forms').select('*').order('created_at', { ascending: false });
+      if (error) { console.error('Error fetching forms:', error); return; }
+      const normalized = (data || []).map(f => ({
+        ...f,
+        fields: asArray(f.fields),
+        styles: asObject(f.styles, DEFAULT_STYLES),
+        config: asObject(f.config, DEFAULT_CONFIG),
+      }));
+      setForms(normalized);
+      setView(localStorage.getItem('view') || 'dashboard');
+      setCurrentFormId(localStorage.getItem('currentFormId'));
+    })();
+  }, [session]);
+
+  // Persist small UI state
+  useEffect(() => { if (view !== 'public_form') localStorage.setItem('view', view); }, [view]);
+  useEffect(() => {
+    if (currentFormId) localStorage.setItem('currentFormId', currentFormId);
+    else localStorage.removeItem('currentFormId');
+  }, [currentFormId]);
+
+  // ... keep the rest of your existing code (view switching, forms, etc.)
+  
+
+  // ⬇️ MOVE THIS FUNCTION HERE (top-level inside App, not inside useEffect)
+// inside App()
+const buildFormWithAIDashboard = async (userPrompt) => {
+  let ai;
+  try {
+    const llmText = await callAiBuilder(userPrompt);
+    ai = parseAIFormJSON(llmText);
+  } catch (e) {
+    console.error('AI builder failed:', e);
+    ai = {
+      name: "New Form",
+      title: "Untitled Form",
+      fields: [
+        { type: "text", label: "Your Name", required: true },
+        { type: "email", label: "Email", required: true },
+        { type: "button", label: "Submit" }
+      ],
+      styles: {},
+      config: {}
+    };
+  }
+
+  const finalStyles = normalizeStyles({
+    ...(ai.styles || {}),
+    ...stylesFromPrompt(userPrompt),
+  });
+
+  // ✅ declare these ONCE
+  const wantsTwoText = /(^|\b)two\b.*\btext\s*fields?/i.test(userPrompt);
+  let newFields = Array.isArray(ai.fields) ? ai.fields : [];
+if (wantsTwoText) {    newFields = [
+      { type: 'text', label: 'Text Field 1', placeholder: 'Enter text' },
+      { type: 'text', label: 'Text Field 2', placeholder: 'Enter text' },
+    ];
+  }
+
+  const draft = {
+    id: `draft_${Date.now()}`,
+    name: ai.name || "Untitled Form",
+    title: ai.title || "Untitled Form",
+    fields: (newFields || []).map(f => ({
+      id: f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+      ...f,
+    })),
+    styles: finalStyles,
+    config: asObject(ai.config, DEFAULT_CONFIG),
+    created_at: new Date().toISOString(),
+  };
+
+  setBuilderDraft(draft);
+  setCurrentFormId(null);
+  setView("builder");
+};
+
+
+
+  // --- Main Effect: Manages the user session ---
+ 
+     
 
   // Persist UI state to localStorage
   useEffect(() => {
@@ -1394,6 +2305,11 @@ function App() {
 
 
   // --- All functions below now use async/await to talk to Supabase ---
+// inside FormBuilderPage (after the useState hooks)
+
+
+
+
 
   const createNewForm = async () => {
     const newFormObject = {
@@ -1425,24 +2341,58 @@ function App() {
       setView('builder');
     }
   };
+// in App() — replace both functions
 
-  const saveForm = async (updated) => {
-    const { id, created_at, ...formToUpdate } = updated; // Exclude read-only fields
-    const { data, error } = await supabase.from('forms').update(formToUpdate).eq('id', id).select().single();
-    
+const saveForm = async (updated) => {
+  const { id, created_at, ...payload } = updated; // strip read-only
+  const isDraft = !id || String(id).startsWith('draft_');
+
+  if (isDraft) {
+    // INSERT new row
+    const { data, error } = await supabase
+      .from('forms')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error inserting form:', error);
+      alert('Could not save form (insert). See console for details.');
+      return null;
+    }
+
+    // Put new row into local state and switch builder to DB-backed id
+    setForms(prev => [data, ...prev]);
+    setCurrentFormId(data.id);
+    setBuilderDraft(null);
+    return data;
+  } else {
+    // UPDATE existing row
+    const { data, error } = await supabase
+      .from('forms')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
     if (error) {
       console.error('Error updating form:', error);
-    } else {
-      setForms(prev => prev.map(f => f.id === data.id ? data : f));
-      if (builderDraft?.id === data.id) setBuilderDraft(null);
+      alert('Could not save form (update). See console for details.');
+      return null;
     }
-  };
-  
-  const saveAndExit = async (updated) => {
-    await saveForm(updated);
+
+    setForms(prev => prev.map(f => (f.id === data.id ? data : f)));
+    return data;
+  }
+};
+
+const saveAndExit = async (updated) => {
+  const saved = await saveForm(updated);
+  if (saved) {
     setBuilderDraft(null);
     setView('dashboard');
-  };
+  }
+};
 
   const deleteForm = async (id) => {
     const { error } = await supabase.from('forms').delete().eq('id', id);
@@ -1484,113 +2434,136 @@ function App() {
   const startPreviewFromBuilder   = (state)=>{ setPreviewData(state); setView('preview'); };
   const exitPreview = ()=>{ setPreviewData(null); setView(currentFormId ? 'builder' : 'dashboard'); };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // The auth listener will set the session to null, automatically showing the login page.
-    localStorage.removeItem('view');
-    localStorage.removeItem('currentFormId');
-    setCurrentFormId(null);
-    setEmbedModalFormId(null);
-    setPreviewData(null);
-    setBuilderDraft(null);
-    setPublicFormData(null);
-    setView('login'); // Explicitly set view to login on logout
-  };
+ // in App (your handleLogout)
+const handleLogout = async () => {
+  // Clear both server & local cached session
+  await supabase.auth.signOut({ scope: 'local' }); // ⬅️ important
+  await supabase.auth.getSession();                // force a read to settle state
+
+  // local UI cleanup
+  localStorage.removeItem('view');
+  localStorage.removeItem('currentFormId');
+  setCurrentFormId(null);
+  setEmbedModalFormId(null);
+  setPreviewData(null);
+  setBuilderDraft(null);
+  setPublicFormData(null);
+  setView('login');
+};
+
 
   const currentFormForBuilder = builderDraft || forms.find(f => f.id === currentFormId);
 
-  // --- RENDER LOGIC ---
+    // --- RENDER LOGIC (after hooks) ---
+  if (booting) {
+    return <div className="min-h-screen grid place-items-center text-slate-500">Loading…</div>;
+  }
   if (!session) {
-    return <LoginPage />;
+    return <LoginPage onLoginSuccess={setSession} />;
   }
-if (view === 'public_form') {
-  if (!publicFormData) {
-    return <div className="p-8 text-center font-sans">Form not found or URL is invalid.</div>;
-  }
-  return (
-    <div
-      className="min-h-screen p-4 sm:p-6"
-      style={{
-        fontFamily: publicFormData.styles.fontFamily,
-        backgroundColor: publicFormData.styles.backgroundColor
-      }}
-    >
+
+  if (view === 'public_form') {
+    if (!publicFormData) {
+      return <div className="p-8 text-center font-sans">Form not found or URL is invalid.</div>;
+    }
+    return (
       <div
-        className="mx-auto border rounded-2xl shadow-lg p-6 sm:p-8"
+        className="min-h-screen p-4 sm:p-6"
         style={{
-          maxWidth: `${publicFormData.styles.formWidthPct || 100}%`,
-          backgroundColor: publicFormData.styles.fieldCardBgColor,
-          borderColor: publicFormData.styles.borderColor
+          fontFamily: publicFormData.styles.fontFamily,
+          backgroundColor: publicFormData.styles.backgroundColor
         }}
       >
-        {publicFormData.styles.logoUrl && (
-          <img src={publicFormData.styles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />
-        )}
-
-        <h1
-          className="text-2xl font-bold text-center mb-6"
-          style={{ color: publicFormData.styles.titleColor || publicFormData.styles.textColor }}
+        <div
+          className="mx-auto border rounded-2xl shadow-lg p-6 sm:p-8"
+          style={{
+            maxWidth: `${publicFormData.styles.formWidthPct || 100}%`,
+            backgroundColor: publicFormData.styles.fieldCardBgColor,
+            borderColor: publicFormData.styles.borderColor
+          }}
         >
-          {publicFormData.title}
-        </h1>
+          {publicFormData.styles.logoUrl && (
+            <img src={publicFormData.styles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />
+          )}
 
-        <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
-          {Array.isArray(publicFormData.fields) &&
-            publicFormData.fields.map((f) => (
-              <FieldRendererPreview key={f.id} field={f} formStyles={publicFormData.styles} />
-            ))}
-        </form>
+          <h1
+            className="text-2xl font-bold text-center mb-6"
+            style={{ color: publicFormData.styles.titleColor || publicFormData.styles.textColor }}
+          >
+            {publicFormData.title}
+          </h1>
+
+          <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+            {Array.isArray(publicFormData.fields) &&
+              publicFormData.fields.map((f) => (
+                <FieldRendererPreview key={f.id} field={f} formStyles={publicFormData.styles} />
+              ))}
+          </form>
+        </div>
       </div>
-    </div>
+    );
+  }
+
+ if (view === 'ai_builder') {
+  return (
+    <AIBuildPage
+      forms={forms}
+      onBuild={buildFormWithAIDashboard}
+      onCancel={() => setView('dashboard')}
+      onLogout={handleLogout}
+    />
   );
-} // ✅ this closes the if (view === 'public_form') block
+}
 
-
-
-
-  if (view === 'login') return <LoginPage onLogin={() => setView('dashboard')} />;
 
   if (view === 'dashboard') {
     return (
       <>
-        {embedModalFormId && <EmbedModal formId={embedModalFormId} forms={forms} onClose={() => setEmbedModalFormId(null)} />}
-  <DashboardPage
+        {embedModalFormId && (
+          <EmbedModal formId={embedModalFormId} forms={forms} onClose={() => setEmbedModalFormId(null)} />
+        )}
+     
+       <DashboardPage
   forms={forms}
   createNewForm={createNewForm}
   editForm={editForm}
   deleteForm={deleteForm}
   shareForm={shareForm}
   duplicateForm={duplicateForm}
-  onLogout={handleLogout}     // ⬅️ NEW
+  onOpenAISection={() => setView('ai_builder')}
+  onLogout={handleLogout}
   previewForm={(id) => {
-    const f = forms.find(x => x.id === id);
-    if (f) {
-      setBuilderDraft(null);
-      setPreviewData(f);
-      setView('preview');
-    }
+    const f = forms.find((x) => x.id === id);
+    if (f) { setBuilderDraft(null); setPreviewData(f); setView('preview'); }
   }}
 />
-
       </>
     );
   }
 
-if (view === 'builder' && currentFormForBuilder) {
-    return <FormBuilderPage 
-             initialForm={currentFormForBuilder} 
-             saveForm={saveForm} 
-             saveAndExit={saveAndExit} 
-             backToDashboard={() => { setCurrentFormId(null); setView('dashboard'); }} 
-             previewForm={startPreviewFromBuilder} 
-           />;
+  if (view === 'builder' && currentFormForBuilder) {
+    return (
+      <FormBuilderPage
+        initialForm={currentFormForBuilder}
+        saveForm={saveForm}
+        saveAndExit={saveAndExit}
+        backToDashboard={() => {
+          setCurrentFormId(null);
+          setView('dashboard');
+        }}
+        previewForm={startPreviewFromBuilder}
+      />
+    );
   }
-if(view==='preview' && previewData){
+
+  if (view === 'preview' && previewData) {
     return <PreviewPage previewData={previewData} exitPreview={exitPreview} />;
   }
 
-  return <LoginPage onLogin={() => setView('dashboard')} />;
+  // Fallback
+  return <LoginPage />;
 }
+
 
 /* -------------------------------------------------------
    Error Boundary wrapper

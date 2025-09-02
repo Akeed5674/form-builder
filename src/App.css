@@ -354,3 +354,251 @@
   border-color: var(--studio-border) !important;
 }
 
+/* index.css */
+
+/* basic reset */
+html, body, #root {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* kill the default white gutter and set your app bg */
+body {
+  margin: 0;                 /* <- removes the white strip */
+  background: #f8fafc;       /* matches your main panel (bg-slate-50) */
+}
+
+/* just in case your wrapper had spacing */
+.ui-fix {
+  margin: 0;
+  padding: 0;
+}
+/* Make sure nothing adds a top gutter */
+html, body, #root, .ui-fix {
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 100%;
+}
+
+/* The dashboard grid should start flush at the top */
+.ui-fix .min-h-screen.grid {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Sidebar: touch the top edge and fill the viewport */
+.ui-fix .app-sidebar {
+  position: sticky;   /* keep it in the normal flow but stick to the top */
+  top: 0;             /* <- critical */
+  align-self: start;  /* ensure the grid row starts at the top */
+  height: 100vh;      /* full viewport height */
+}
+
+/* If Safari shows a tiny top gap, use its fill-available hack */
+@supports (-webkit-touch-callout: none) {
+  html, body, #root, .ui-fix {
+    height: -webkit-fill-available;
+  }
+}
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+body {
+  overflow-y: auto !important; /* never lock body scrolling */
+}
+
+/* If you gave .ui-fix any overflow rules, undo them: */
+.ui-fix {
+  min-height: 100vh;
+  overflow: visible; /* or remove overflow entirely */
+}
+:root{
+  --sb-w: 230px;
+  --sb-bg-1: #081225;
+  --sb-bg-2: #0a1020;
+  --sb-border: rgba(255,255,255,0.08);
+  --sb-text: #d7dbe8;
+  --sb-muted: #97a0b3;
+  --sb-active-bg: rgba(56,128,255,0.18);
+  --sb-hover-bg: rgba(255,255,255,0.06);
+  --sb-blue: #3b82f6;   /* adjust for brand */
+  --sb-cyan: #22d3ee;
+}
+
+.sidebar{
+  position: relative;
+  width: var(--sb-w);
+  min-width: var(--sb-w);
+  background:
+    linear-gradient(180deg, var(--sb-bg-1) 0%, var(--sb-bg-2) 60%, #0a0f1a 100%);
+  border-right: 1px solid var(--sb-border);
+  color: var(--sb-text);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  isolation: isolate; /* keeps glow inside */
+}
+
+/* glossy gradient sheen */
+.sidebar__glass{
+  content:"";
+  position:absolute; inset:0;
+  background:
+    linear-gradient(180deg, rgba(59,130,246,.22) 0%, rgba(0,0,0,0) 40%),
+    radial-gradient(120% 70% at -10% -20%, rgba(34,211,238,.25) 0%, rgba(0,0,0,0) 60%);
+  pointer-events:none;
+  mix-blend-mode: screen;
+  opacity:.9;
+}
+
+.sidebar__brand{
+  display:flex; align-items:center; gap:.6rem;
+  padding:14px 16px 10px;
+  border-bottom:1px solid var(--sb-border);
+  position: relative;
+  z-index:1;
+}
+.brand-mark{
+  width:28px; height:28px; display:grid; place-items:center;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+}
+.brand-title{ font-weight:700; letter-spacing:.2px; color:#eaf0ff; }
+
+.sidebar__section{ padding:8px 8px; position:relative; z-index:1; }
+.sidebar__section--pad{ padding-top:10px; }
+
+.menu-caption{
+  color: var(--sb-muted);
+  font-size: 10px; letter-spacing: .16em;
+  padding: 10px 8px 6px; opacity:.9;
+}
+
+/* CTA */
+.cta-button{
+  width:100%;
+  display:flex; align-items:center; gap:.55rem;
+  font-size: 0.8rem;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background:
+    linear-gradient(135deg, rgba(59,130,246,.45) 0%, rgba(34,211,238,.25) 60%, rgba(255,255,255,.08) 100%);
+  color:#f7faff;
+  font-weight:600;
+  backdrop-filter: blur(6px);
+  transition: transform .12s ease, box-shadow .15s ease, background .2s ease;
+}
+.cta-button:hover{
+  box-shadow: 0 0 0 1px rgba(59,130,246,.35), 0 8px 22px rgba(0,0,0,.35);
+  transform: translateY(-1px);
+}
+.sparkle{ font-size:14px; }
+.cta-label{ flex:1; text-align:left; }
+
+/* Nav */
+.nav{ display:flex; flex-direction:column; gap:4px; padding:6px 0 4px; }
+.nav-item{
+  display:flex; align-items:center; gap:.6rem;
+  width:100%;
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid transparent;
+  color: var(--sb-text);
+  background: transparent;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  text-align:left;
+}
+.nav-item:hover{
+  background: var(--sb-hover-bg);
+  border-color: var(--sb-border);
+}
+.nav-item.is-active{
+  background: var(--sb-active-bg);
+  border-color: rgba(59,130,246,.45);
+  box-shadow: inset 0 0 0 1px rgba(59,130,246,.25);
+}
+.nav-icon{ width:18px; height:18px; display:grid; place-items:center; opacity:.9; }
+.nav-label{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.badge{
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #eaf2ff;
+  background: linear-gradient(180deg, rgba(59,130,246,.6), rgba(59,130,246,.35));
+  border: 1px solid rgba(255,255,255,.18);
+}
+
+/* Footer link */
+.sidebar__footer{
+  margin-top:auto; padding:10px 8px 14px; border-top:1px solid var(--sb-border);
+  position:relative; z-index:1;
+}
+.link-ghost{
+  width:100%;
+  background:transparent; color: var(--sb-muted);
+  display:flex; align-items:center; gap:.6rem;
+  padding:10px 12px; border-radius:10px; border:1px solid transparent;
+}
+.link-ghost:hover{
+  background: var(--sb-hover-bg);
+  color: var(--sb-text);
+  border-color: var(--sb-border);
+}
+
+/* If your layout grid expects the old width */
+.app-sidebar, .sidebar { width: var(--sb-w); min-width: var(--sb-w); }
+.sidebar__brand {
+  display: flex;
+  justify-content: center;   /* center horizontally */
+  align-items: center;
+  padding: 18px 0;           /* more breathing room */
+  border-bottom: 1px solid var(--sb-border);
+  position: relative;
+  z-index: 1;
+}
+
+.brand-mark--big {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.08);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sb-border);
+}
+.brand-mark--big {
+  width: 52px;   /* was 64px */
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.08);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sb-border);
+}
+/* Sidebar sections: tighter and consistent */
+.sidebar__section { padding: 6px 8px; }          /* was 8px 8px */
+.sidebar__section--pad { padding-top: 0; }       /* remove extra top padding */
+
+/* When the CTA section follows a section, add a tiny gap only */
+.sidebar__section + .sidebar__section--pad { margin-top: 4px; }
+
+/* Also trim the nav's own internal padding slightly */
+.nav { padding: 4px 0 2px; }
+
+/* Match nav item typography to CTA */
+.sidebar .nav-item { font-size: 0.8rem; padding: 8px 12px; }
+.sidebar .nav-label { line-height: 1.1; } /* keeps it compact */
+/* Sticky, scrollable sidebar */
+.ui-fix .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
