@@ -1206,56 +1206,28 @@ const EmbedModal = ({ formId, forms, onClose }) => {
 ------------------------------------------------------- */
 // ---- LoginPage (drop-in replacement) ----
 // LoginPage.jsx — robust version
-const LoginPage = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
+const LoginPage = () => {
+      const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errMsg, setErrMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // in LoginPage
+// The new, simpler handleLogin function
 async function handleLogin(e) {
   e.preventDefault();
   setErrMsg(null);
   setLoading(true);
 
-  const withTimeout = (p, ms = 12000) =>
-    Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))]);
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-  try {
-    const { data, error } = await withTimeout(
-      supabase.auth.signInWithPassword({ email, password })
-    );
-
-    if (error) {
-      setErrMsg(error.message || 'Invalid credentials.');
-      setLoading(false);
-      return;
-    }
-
-    if (data?.session) {
-      onLoginSuccess?.(data.session);
-      return;
-    }
-
-    // fallback to current session (auth listener will also run)
-    const { data: now } = await supabase.auth.getSession();
-    if (now?.session) {
-      onLoginSuccess?.(now.session);
-      return;
-    }
-
-    setErrMsg('Signed in, but no session found. Please try again.');
-    setLoading(false);
-  } catch (err) {
-    setErrMsg(
-      err?.message === 'timeout'
-        ? 'Could not reach the auth server (timeout). Check your Supabase URL/key and network.'
-        : `Sign-in failed: ${err?.message || 'Unknown error'}`
-    );
-    setLoading(false);
+  if (error) {
+    setErrMsg(error.message || 'Invalid credentials.');
   }
-}
+  // The onAuthStateChange listener will now handle the navigation
 
+  setLoading(false);
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
@@ -1407,10 +1379,10 @@ const Sidebar = ({ current, onNavigate, formsCount = 0, onLogout, onOpenAISectio
 );
 
 
-const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateForm, deleteForm, shareForm, onLogout, onOpenAISection }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('forms'); // State to control the view
+const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateForm, deleteForm, shareForm, onLogout, onOpenAISection, initialTab = 'forms' }) => { // ✅ COMMA ADDED
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] =  useState(initialTab);
   const filteredForms = forms.filter(form =>
     (form.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
     (form.title?.toLowerCase() || '').includes(searchQuery.toLowerCase())
@@ -2090,7 +2062,7 @@ const PreviewPage = ({ previewData, exitPreview }) => {
 
 // === AI Builder PAGE (standalone, no modal) ===
 // === AI Builder PAGE (standalone, with sidebar) ===
-const AIBuildPage = ({ forms, onBuild, onCancel, onLogout }) => {
+const AIBuildPage = ({ forms, onBuild, onCancel, onNavigate, onLogout }) => { // ✅ Add onNavigate
 
 // Replace the entire component body with this
   const [prompt, setPrompt] = useState(
@@ -2113,13 +2085,14 @@ const AIBuildPage = ({ forms, onBuild, onCancel, onLogout }) => {
   return (
     <div className="min-h-screen grid grid-cols-[14rem_1fr]">
       {/* Left: same sidebar as dashboard */}
-      <Sidebar
-        current="ai_builder"               // Use a static ID since there are no tabs here
-        onNavigate={(id) => { if (id === 'forms') onCancel(); }} // Navigate back if "Forms" is clicked
-        formsCount={forms.length}
-        onLogout={onLogout}
-        onOpenAISection={() => { /* Already on this page */ }}
-      />
+
+<Sidebar
+  current="ai_builder"
+      onNavigate={onNavigate} // ✅ Use the new onNavigate prop
+  formsCount={forms.length}
+  onLogout={onLogout}
+  onOpenAISection={() => { /* Already on this page */ }}
+/>
 
       {/* Right: page content */}
       <div className="bg-slate-50 h-full overflow-auto">
@@ -2165,6 +2138,8 @@ function App() {
   const [session, setSession] = useState(null);
   const [booting, setBooting] = useState(true);
   const [view, setView] = useState('dashboard');
+  const [initialDashboardTab, setInitialDashboardTab] = useState('forms'); // ✅ ADD THIS LINE
+  const backToDashboard = (tab = 'forms') => {  setInitialDashboardTab(tab);  setView('dashboard');};
   const [forms, setForms] = useState([]);
   const [currentFormId, setCurrentFormId] = useState(null);
   const [previewData, setPreviewData] = useState(null);
@@ -2174,40 +2149,64 @@ function App() {
 
   // ---- effects (still before any return) ----
   // Single auth effect: get initial session + listen for changes
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (mounted) {
-        setSession(session);
-        setBooting(false);
-      }
-    })();
-   const { data: { subscription } } =
-  supabase.auth.onAuthStateChange((event, sess) => {
-    console.log('[auth]', event, !!sess);
-    setSession(sess);
+ // ... inside the App component
+
+// Effect to handle Supabase auth state changes
+useEffect(() => {
+  // Get the initial session and set the user
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    setSession(session);
+    setBooting(false);
   });
 
-    return () => { mounted = false; subscription.unsubscribe(); };
-  }, []);
+  // Set up a listener for any future auth changes
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      setSession(session);
+    }
+  );
+
+  // Cleanup the subscription when the component unmounts
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
+
+  // Routing / initial data (depends on session)
+// ... inside the App component
 
   // Routing / initial data (depends on session)
   useEffect(() => {
     if (!session) return;
+
+    // This part handles the public form view from a URL hash
     const hash = window.location.hash;
     if (hash.startsWith('#form-data/')) {
       try {
         const compressed = hash.substring(11);
         const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
         const formData = JSON.parse(decompressed);
-        if (formData) { setPublicFormData(formData); setView('public_form'); }
-      } catch (e) { console.error("Failed to parse form data from URL", e); }
+        if (formData) {
+          setPublicFormData(formData);
+          setView('public_form');
+        }
+      } catch (e) {
+        console.error("Failed to parse form data from URL", e);
+      }
       return;
     }
+    // ... inside the App component, after the other useEffects
+
+  // ✅ ADD THIS ENTIRE BLOCK
+  // This effect handles changing the view after login/logout
+
+    // This part fetches form data when the user is logged in
     (async () => {
       const { data, error } = await supabase.from('forms').select('*').order('created_at', { ascending: false });
-      if (error) { console.error('Error fetching forms:', error); return; }
+      if (error) {
+        console.error('Error fetching forms:', error);
+        return;
+      }
       const normalized = (data || []).map(f => ({
         ...f,
         fields: asArray(f.fields),
@@ -2215,13 +2214,20 @@ function App() {
         config: asObject(f.config, DEFAULT_CONFIG),
       }));
       setForms(normalized);
-      setView(localStorage.getItem('view') || 'dashboard');
-      setCurrentFormId(localStorage.getItem('currentFormId'));
     })();
   }, [session]);
+useEffect(() => {
+    if (session && view === 'login') {
+      setView('dashboard');
+    }
+    if (!session && view !== 'login') {
+      setView('login');
+    }
+  }, [session, view]);
 
   // Persist small UI state
   useEffect(() => { if (view !== 'public_form') localStorage.setItem('view', view); }, [view]);
+
   useEffect(() => {
     if (currentFormId) localStorage.setItem('currentFormId', currentFormId);
     else localStorage.removeItem('currentFormId');
@@ -2458,9 +2464,10 @@ const handleLogout = async () => {
   if (booting) {
     return <div className="min-h-screen grid place-items-center text-slate-500">Loading…</div>;
   }
-  if (!session) {
-    return <LoginPage onLoginSuccess={setSession} />;
-  }
+// Inside the App component's return logic...
+if (!session) {
+  return <LoginPage />;
+}
 
   if (view === 'public_form') {
     if (!publicFormData) {
@@ -2509,7 +2516,8 @@ const handleLogout = async () => {
     <AIBuildPage
       forms={forms}
       onBuild={buildFormWithAIDashboard}
-      onCancel={() => setView('dashboard')}
+      onCancel={() => backToDashboard('forms')} // ✅ Use the new function
+      onNavigate={backToDashboard}              // ✅ Pass the new function
       onLogout={handleLogout}
     />
   );
@@ -2524,7 +2532,10 @@ const handleLogout = async () => {
         )}
      
        <DashboardPage
+        key={initialDashboardTab} // ✅ Add a key to ensure the component re-renders
+      initialTab={initialDashboardTab} // ✅ Pass the initial tab state
   forms={forms}
+
   createNewForm={createNewForm}
   editForm={editForm}
   deleteForm={deleteForm}
