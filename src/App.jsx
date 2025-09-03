@@ -5,6 +5,7 @@ import { supabase } from './supabaseClient';
 import SupabaseFileUploader from './SupabaseFileUploader.jsx';
 import LZString from 'lz-string';
 // ---- Normalizers & defaults (ADD THIS) ----
+// Normalizers
 const asArray = (v) => {
   if (Array.isArray(v)) return v;
   if (typeof v === 'string') {
@@ -12,6 +13,48 @@ const asArray = (v) => {
   }
   return [];
 };
+const asObject = (v, fallback = {}) => {
+  if (v && typeof v === 'object') return v;
+  if (typeof v === 'string') {
+    try { const p = JSON.parse(v); return p && typeof p === 'object' ? p : fallback; } catch {}
+  }
+  return fallback;
+};
+
+// Styles (single source of truth)
+const DEFAULT_STYLES = {
+  primaryColor: '#6366f1',
+  fontFamily: 'Inter, sans-serif',
+  backgroundColor: '#ffffff',     // page bg
+  textColor: '#111827',
+  borderColor: '#d1d5db',
+  buttonTextColor: '#ffffff',
+  logoUrl: null,
+  fieldBgColor: '#ffffff',        // input bg
+  fieldCardBgColor: '#ffffff',    // card/panel bg
+  inputTextColor: '#0f172a',
+  optionTextColor: '#334155',
+  buttonSize: 'md',
+  buttonVariant: 'solid',
+  buttonRadius: 'md',
+  buttonWidthPct: 100,
+  formWidthPct: 100,
+  titleColor: '#111827',          // used for form title
+};
+
+const DEFAULT_CONFIG = {
+  submit: { redirectUrl: '', openInNewTab: false },
+  email: {
+    enabled: false,
+    fromName: '',
+    fromEmail: '',
+    toFieldId: '',
+    additionalTo: '',
+    subject: 'Thank you',
+    body: 'We received your response.'
+  }
+};
+
 // --- Robust AI call helper ---
 async function callAiBuilder(userPrompt) {
   const BASE = import.meta.env.VITE_AI_BASE || "http://localhost:4000";
@@ -375,28 +418,6 @@ const parseAIFormJSON = (raw) => {
   }
 };
 
-const asObject = (v, fallback = {}) => {
-  if (v && typeof v === 'object') return v;
-  if (typeof v === 'string') {
-    try { const p = JSON.parse(v); return p && typeof p === 'object' ? p : fallback; } catch {}
-  }
-  return fallback;
-};
-
-const DEFAULT_STYLES = {
-  primaryColor: '#6366f1', fontFamily: 'Inter, sans-serif', backgroundColor: '#ffffff',
-  textColor: '#111827', borderColor: '#d1d5db', buttonTextColor: '#ffffff',
-  logoUrl: null, fieldBgColor: '#ffffff', fieldCardBgColor: '#ffffff',
-  inputTextColor: '#0f172a', optionTextColor: '#334155', buttonSize: 'md',
-  buttonVariant: 'solid', buttonRadius: 'md', buttonWidthPct: 100, formWidthPct: 100,
-  titleColor: '#111827',           // 👈 add this
-
-};
-
-const DEFAULT_CONFIG = {
-  submit: { redirectUrl: '', openInNewTab: false },
-  email: { enabled:false, fromName:'', fromEmail:'', toFieldId:'', additionalTo:'', subject:'Thank you', body:'We received your response.'}
-};
 
 
 /* -------------------------------------------------------
@@ -876,7 +897,7 @@ function StylingPanel({ styles, setStyles, formTitle, setFormTitle }) {
 
 
   return (
-    <div className="panel-scroll">
+  <div>
       <div className="text-sm font-semibold text-slate-700 mb-3">Form Styling</div>
 
       
@@ -1033,7 +1054,7 @@ function FieldSettingsPanel({ field, updateField }) {
     updateField(field.id, { options: (field.options || []).filter((_, x) => x !== i) });
 
   return (
-    <div className="panel-scroll">
+  <div>
       <div className="text-sm font-semibold text-slate-700 mb-3">Field Settings</div>
 
       <div className="mb-3">
@@ -1217,28 +1238,30 @@ const EmbedModal = ({ formId, forms, onClose }) => {
 ------------------------------------------------------- */
 // ---- LoginPage (drop-in replacement) ----
 // LoginPage.jsx — robust version
+// ---- LoginPage (drop-in replacement) ----
+// LoginPage.jsx — robust version
 const LoginPage = () => {
-      const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errMsg, setErrMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // in LoginPage
-// The new, simpler handleLogin function
-async function handleLogin(e) {
-  e.preventDefault();
-  setErrMsg(null);
-  setLoading(true);
+  // The new, simpler handleLogin function
+  async function handleLogin(e) {
+    e.preventDefault();
+    setErrMsg(null);
+    setLoading(true);
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (error) {
-    setErrMsg(error.message || 'Invalid credentials.');
+    if (error) {
+      setErrMsg(error.message || 'Invalid credentials.');
+    }
+    // The onAuthStateChange listener will now handle the navigation
+
+    setLoading(false);
   }
-  // The onAuthStateChange listener will now handle the navigation
-
-  setLoading(false);
-}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
@@ -1287,6 +1310,7 @@ async function handleLogin(e) {
     </div>
   );
 };
+
 
 
 // ---- BatLogo (SVG) ----
@@ -1401,7 +1425,7 @@ const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateF
   );
 
   return (
-<div className="min-h-screen grid grid-cols-[14rem_1fr]">   <Sidebar
+<div className="h-screen grid grid-cols-[14rem_1fr] overflow-hidden">  <Sidebar
   current={activeTab}
   onNavigate={setActiveTab}
   formsCount={forms.length}
@@ -1411,8 +1435,8 @@ const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateF
 
 
 
-      <div className="bg-slate-50">
-        <div className="p-6">
+<div className="bg-slate-50 h-full overflow-auto">
+  <div className="p-6">
           
           {/* --- FORMS VIEW --- */}
           {activeTab === 'forms' && (
@@ -1492,526 +1516,750 @@ const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateF
 /* -------------------------------------------------------
    BUILDER (tabs: SETTINGS · BUILD · STYLING)
 ------------------------------------------------------- */
-const FormBuilderPage = ({ initialForm, saveForm, saveAndExit, backToDashboard, previewForm }) => {
-  const [fields, setFields] = useState(asArray(initialForm.fields));
-  const [formTitle, setFormTitle] = useState(initialForm.title);
-  const [formName, setFormName] = useState(initialForm.name);
-  const [formStyles, setFormStyles] = useState(asObject(initialForm.styles, DEFAULT_STYLES));
-  const [formConfig, setFormConfig] = useState(asObject(initialForm.config, DEFAULT_CONFIG));
-const [showAIModal, setShowAIModal] = useState(false);
+// ----- NLP helpers: tokenize, ordinals, field matching -----
+const ORDINAL_WORDS = { first:1, second:2, third:3, fourth:4, fifth:5, sixth:6, seventh:7, eighth:8, ninth:9, tenth:10 };
 
-const buildFormWithAI = async (userPrompt) => {
-  let ai;
-  try {
-    const llmText = await callAiBuilder(userPrompt);
-    ai = parseAIFormJSON(llmText);
-  } catch (e) {
-    console.error('AI builder failed:', e);
-    // Fallback: minimal usable form so the user is never stuck
-    ai = {
-      name: "New Form",
-      title: "Untitled Form",
-      fields: [
-        { type: "text", label: "Your Name", required: true, placeholder: "Jane Doe" },
-        { type: "email", label: "Email", required: true, placeholder: "name@example.com" },
-        { type: "button", label: "Submit" }
-      ],
-      styles: {},
-      config: {}
-    };
-  }
+const normalizeWord = (s) => String(s||'').trim().toLowerCase();
 
-  // Merge AI styles with any color hints detected in the user's prompt
-  const finalStyles = normalizeStyles({
-    ...(ai.styles || {}),
-    ...stylesFromPrompt(userPrompt),
-  });
-
-
-  // Build fields with a fallback when the prompt says "two text fields"
-  const wantsTwoText = /(^|\\b)two\\b.*\\btext\\s*fields?/i.test(userPrompt);
-
-// Start with AI fields (or empty)
-let newFields = Array.isArray(ai.fields) ? ai.fields : [];
-
-// --- Normalize each field ---
-// - Ensure id
-// - Normalize options: objects -> strings
-// - Coerce type to a known string
-const normalizeField = (f) => {
-  const id = f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-  let options = Array.isArray(f.options) ? f.options : [];
-  // If options are objects like {label: "A"} or {value: "A"}, turn them into strings.
-  options = options.map((o) => {
-    if (typeof o === 'string') return o;
-    if (o && typeof o === 'object') return o.label || o.value || '';
-    return '';
-  }).filter(Boolean);
-
-  // Type from LLMs can be capitalized or variants; normalize to our renderer
-  const t = String(f.type || '').toLowerCase();
-  const typeMap = {
-    text: 'text',
-    input: 'text',
-    email: 'email',
-    textarea: 'textarea',
-    select: 'dropdown',
-    dropdown: 'dropdown',
-    radio: 'radio',
-    radiogroup: 'radio',
-    checkbox: 'checkbox',
-    checkboxes: 'checkbox',
-    date: 'date',
-    file: 'file',
-    phone: 'phone',
-    tel: 'phone',
-    html: 'html',
-    button: 'button',
-    submit: 'button',
-  };
-
-  const type = typeMap[t] || 'text';
-
-  return { id, ...f, type, options };
+const getOrdinalIndex = (text) => {
+  const t = normalizeWord(text);
+  if (ORDINAL_WORDS[t]) return ORDINAL_WORDS[t] - 1;
+  const m = t.match(/\b(\d+)(st|nd|rd|th)?\b/); // "2nd", "3", etc.
+  if (m) return Math.max(0, parseInt(m[1], 10) - 1);
+  return null;
 };
 
-newFields = newFields.map(normalizeField);
+const fieldTypeAliases = {
+  text: ['text','input','short text'],
+  email: ['email'],
+  textarea: ['textarea','long text','message'],
+  dropdown: ['select','dropdown'],
+  radio: ['radio','radiogroup'],
+  checkbox: ['checkbox','checkboxes'],
+  date: ['date'],
+  phone: ['phone','tel','telephone','mobile'],
+  file: ['file','upload'],
+  button: ['button','submit','cta'],
+  html: ['html','note','content','rich text'],
+};
 
-// --- Satisfy "two text fields" without deleting other fields ---
-if (wantsTwoText) {
-  const existingText = newFields.filter((f) => f.type === 'text');
-  const needed = Math.max(0, 2 - existingText.length);
-  for (let i = 0; i < needed; i++) {
-    newFields.push(
-      normalizeField({
-        type: 'text',
-        label: `Text Field ${existingText.length + i + 1}`,
-        placeholder: 'Enter text',
-      })
-    );
+const matchType = (token) => {
+  const t = normalizeWord(token);
+  for (const [type, aliases] of Object.entries(fieldTypeAliases)) {
+    if (aliases.includes(t)) return type;
   }
-}
+  return null;
+};
 
- setFields(newFields);
+// ----- Multi-instruction interpreter -----
+// Supports commands like:
+//  - set "Email" label color to #0ea5e9
+//  - make first text field placeholder "Your full name"
+//  - change button text to "Send"
+//  - title "Contact Us"
+//  - set Email input text color blue and border color #999
+//  - second radio field label color red, third field bg #fafafa
+//  - for "Message" placeholder "Tell us about your project"
+const interpretPromptEdits = (prompt, fields, globalStyles) => {
+  const p = String(prompt || '');
+  const updates = [];   // { fieldId, patch }
+  const styleEdits = {}; // global style patches (title, theme, etc.)
 
+  // Split on semicolons or " and " / " & " but keep quoted chunks intact
+  const parts = p
+    .split(/;|\n|(?<!["'`])\band\b(?![^"']*["'])|(?<!["'`])\s&\s(?![^"']*["'])/gi)
+    .map(s => s.trim())
+    .filter(Boolean);
 
+  // color token detection
+  const COLOR_TOKEN = /(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+)/i;
 
-  // Apply to builder state
- 
-  setFormStyles(finalStyles);
-  setFormTitle(ai.title || "Untitled Form");
-  setFormName(ai.name || "Untitled Form");
-  setFormConfig(asObject(ai.config, DEFAULT_CONFIG));
-  setShowAIModal(false);
-}; // <-- IMPORTANT: function closed here
-
-
-
-
-  
-  const [selectedFieldId, setSelectedFieldId] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [activeTab, setActiveTab] = useState('build');
-  const dragIdx = useRef(null);
-
-  const updateField = useCallback((id, patch) => setFields(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f)), []);
-  const removeField = useCallback((id) => { setFields(prev => prev.filter(f => f.id !== id)); if (selectedFieldId === id) setSelectedFieldId(null); }, [selectedFieldId]);
-
-  const addFromToolbox = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const data = JSON.parse(e.dataTransfer.getData('application/json'));
-    const newField = { id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, ...data };
-    setFields(prev => [...prev, newField]);
-    setSelectedFieldId(newField.id);
-  }, []);
-
-  const onDragStartExisting = (e, i) => { dragIdx.current = i; };
-  const onDropExisting = (e, i) => {
-    e.preventDefault();
-    const list = [...fields];
-    const item = list.splice(dragIdx.current, 1)[0];
-    list.splice(i, 0, item);
-    dragIdx.current = null;
-    setFields(list);
-  };
-  
-  const handleUndo = () => {
-    setFields(asArray(initialForm.fields));
-    setFormStyles(asObject(initialForm.styles, DEFAULT_STYLES));
-    setFormTitle(initialForm.title);
-    setFormName(initialForm.name);
-    setFormConfig(asObject(initialForm.config, DEFAULT_CONFIG));
+  const tryColor = (tok) => {
+    // reuse your toColor() from code
+    return toColor ? toColor(tok) : tok;
   };
 
-  const selectedField = Array.isArray(fields) ? fields.find(f => f.id === selectedFieldId) : null;
+  // helpers to apply
+  const pushFieldPatch = (f, patch) => {
+    if (!f) return;
+    updates.push({ fieldId: f.id, patch });
+  };
 
-  // ===== inside FormBuilderPage =====
+  for (let raw of parts) {
+    const s = raw.trim();
+
+    // ---- Title text change ----
+    // e.g., title "Contact us", set title to "Get in touch"
+    if (/\btitle\b/i.test(s)) {
+      const q = s.match(/["“”'`](.+?)["“”'`]/);
+      if (q) {
+        styleEdits._title = q[1];
+        continue;
+      }
+      const m = s.match(/\b(?:set|make|change)\s+title\s+(?:to|as)?\s*(.+)$/i);
+      if (m) {
+        styleEdits._title = m[1].replace(/^["'`]|["'`]$/g,'').trim();
+        continue;
+      }
+    }
+
+    // ---- Button label change ----
+    // e.g., set button text to "Send", change submit to "Send Now"
+    if (/\b(button|submit|cta)\b/i.test(s) && /\b(text|label)\b/i.test(s)) {
+      const q = s.match(/["“”'`](.+?)["“”'`]/);
+      const newTxt = q ? q[1] : (s.split(/\bto\b/i)[1] || '').replace(/^["'`]|["'`]$/g,'').trim();
+      const btn = fields.find(f => f.type === 'button');
+      if (btn && newTxt) pushFieldPatch(btn, { label: newTxt });
+      continue;
+    }
+
+    // ---- Generic field label rename ----
+    // e.g., rename "Email" to "Work Email"
+    if (/\brename\b/i.test(s)) {
+      const m = s.match(/\brename\s+(.+?)\s+to\s+(.+)$/i);
+      if (m) {
+        const from = m[1].trim();
+        const to = m[2].replace(/^["'`]|["'`]$/g,'').trim();
+        const f = findFieldRef(fields, from) || fields.find(x => (x.label||'').toLowerCase() === from.toLowerCase());
+        if (f && to) pushFieldPatch(f, { label: to });
+        continue;
+      }
+    }
+
+    // ---- Placeholder edit ----
+    // e.g., set "Full Name" placeholder "Jane Doe"
+    if (/\bplaceholder\b/i.test(s)) {
+      const m = s.match(/(.+?)\bplaceholder\b\s*(?:(?:to|as|=)\s*)?["“”'`](.+?)["“”'`]/i)
+            || s.match(/set\s+(.+?)\s+placeholder\s+(?:to|as|=)?\s*(.+)$/i);
+      if (m) {
+        const ref = m[1].trim();
+        const ph = (m[2] || '').replace(/^["'`]|["'`]$/g,'').trim();
+        const f = findFieldRef(fields, ref) || fields.find(x => (x.label||'').toLowerCase() === ref.toLowerCase());
+        if (f && ph) pushFieldPatch(f, { placeholder: ph });
+        continue;
+      }
+    }
+
+    // ---- Per-field color edits ----
+    // patterns like: set "<label>" label color to <color>
+    //                second text field input text color blue
+    //                "Email" border color #999
+    //                third field bg #fafafa
+    const colorTargetMap = [
+      { key: 'labelColor', rx: /(label(?:\s*text)?)\s*color/i },
+      { key: 'inputTextColor', rx: /(input\s*(?:text)?|text)\s*color/i },
+      { key: 'borderColor', rx: /(border|outline)\s*color/i },
+      { key: 'bgColor', rx: /(bg|background)\s*(?:color)?/i },
+      { key: 'optionTextColor', rx: /(option|options|radio|checkbox)\s*(?:text\s*)?color/i },
+    ];
+
+    // Try to extract a field ref phrase up front
+    // Heuristic: before "color" / "placeholder" keywords OR quotes
+    let refGuess = null;
+    const quoted = s.match(/["“”'`](.+?)["“”'`]/);
+    if (quoted) refGuess = quoted[1];
+    else {
+      const refTry = s.match(/\b(?:first|second|third|\d+(?:st|nd|rd|th)?)\s+[a-z ]+?\s*field\b/i)
+                 || s.match(/\blabel\s*:\s*.+$/i);
+      if (refTry) refGuess = refTry[0];
+    }
+    const refField = refGuess ? findFieldRef(fields, refGuess) : null;
+
+    // color target?
+    const target = colorTargetMap.find(t => t.rx.test(s));
+    const colorM = s.match(COLOR_TOKEN);
+    if ((refField && target && colorM) || (/^(set|make|change)\b/i.test(s) && target && colorM)) {
+      const color = tryColor(colorM[0]);
+      if (color) {
+        if (refField) {
+          pushFieldPatch(refField, { [target.key]: color });
+        } else {
+          // If no specific field found, allow applying to all matching type by ordinal-less hint e.g., "all radios label color red"
+          if (/all\s+radios?/i.test(s)) {
+            fields.filter(f => f.type === 'radio').forEach(f => pushFieldPatch(f, { [target.key]: color }));
+          } else if (/all\s+checkbox(es)?/i.test(s)) {
+            fields.filter(f => f.type === 'checkbox').forEach(f => pushFieldPatch(f, { [target.key]: color }));
+          }
+        }
+        continue;
+      }
+    }
+
+    // ---- Global style color shortcuts (if user writes "title color blue", etc.) ----
+    if (/\btitle\b/i.test(s) && /\bcolor\b/i.test(s) && COLOR_TOKEN.test(s)) {
+      const c = tryColor(s.match(COLOR_TOKEN)[0]);
+      if (c) styleEdits.titleColor = c;
+      continue;
+    }
+    if (/\b(primary|theme|accent)\b/i.test(s) && /\bcolor\b/i.test(s) && COLOR_TOKEN.test(s)) {
+      const c = tryColor(s.match(COLOR_TOKEN)[0]);
+      if (c) styleEdits.primaryColor = c;
+      continue;
+    }
+    if (/\b(form|page|body|screen|canvas)\b/i.test(s) && /\b(bg|background)\b/i.test(s) && COLOR_TOKEN.test(s)) {
+      const c = tryColor(s.match(COLOR_TOKEN)[0]);
+      if (c) styleEdits.backgroundColor = c;
+      continue;
+    }
+    if (/\b(card|container|panel|box)\b/i.test(s) && /\b(bg|background)\b/i.test(s) && COLOR_TOKEN.test(s)) {
+      const c = tryColor(s.match(COLOR_TOKEN)[0]);
+      if (c) styleEdits.fieldCardBgColor = c;
+      continue;
+    }
+  }
+
+  return { updates, styleEdits };
+};
+
+// Find a field by: exact label; ordinal + type; plain ordinal in overall order
+const findFieldRef = (fields, descriptor) => {
+  const d = normalizeWord(descriptor);
+
+  // 1) "label: Email" or quoted label
+  const q = d.match(/label\s*:\s*(.+)$/);
+  if (q) {
+    const label = q[1].replace(/^["']|["']$/g,'').trim().toLowerCase();
+    return fields.find(f => (f.label||'').toLowerCase() === label) || null;
+  }
+  const quoted = d.match(/["“”'`](.+?)["“”'`]/);
+  if (quoted) {
+    const label = quoted[1].toLowerCase();
+    return fields.find(f => (f.label||'').toLowerCase() === label) || null;
+  }
+
+  // 2) "<ordinal> <type>" → e.g., "second text field"
+  const m2 = d.match(/\b(first|second|third|fourth|fifth|\d+(?:st|nd|rd|th)?)\s+([a-z ]+?)\s*(field)?\b/);
+  if (m2) {
+    const idx = getOrdinalIndex(m2[1]);
+    const tp = matchType(m2[2]);
+    if (idx != null && tp) {
+      const arr = fields.filter(x => x.type === tp);
+      return arr[idx] || null;
+    }
+  }
+
+  // 3) simple ordinal in overall order: "third field"
+  const m3 = d.match(/\b(first|second|third|fourth|fifth|\d+(?:st|nd|rd|th)?)\s+field\b/);
+  if (m3) {
+    const idx = getOrdinalIndex(m3[1]);
+    return idx != null ? fields[idx] || null : null;
+  }
+
+  return null;
+};
+
+const FormBuilderPage = ({ initialForm, saveForm, saveAndExit, backToDashboard, previewForm }) => {
+  const [fields, setFields] = useState(asArray(initialForm.fields));
+  const [formTitle, setFormTitle] = useState(initialForm.title);
+  const [formName, setFormName] = useState(initialForm.name);
+  const [formStyles, setFormStyles] = useState(asObject(initialForm.styles, DEFAULT_STYLES));
+  const [formConfig, setFormConfig] = useState(asObject(initialForm.config, DEFAULT_CONFIG));
+  const [showAIModal, setShowAIModal] = useState(false);
+
+// inside FormBuilderPage
+const buildFormWithAI = async (userPrompt) => {
+  // 1) Call AI and build a safe baseline
+  let ai;
+  try {
+    const llmText = await callAiBuilder(userPrompt);
+    ai = parseAIFormJSON(llmText);
+  } catch {
+    ai = {
+      name: "New Form",
+      title: "Untitled Form",
+      fields: [
+        { type: "text", label: "Your Name", required: true, placeholder: "Jane Doe" },
+        { type: "email", label: "Email", required: true, placeholder: "name@example.com" },
+        { type: "button", label: "Submit" }
+      ],
+      styles: {},
+      config: {}
+    };
+  }
+
+  // 2) Styles = AI styles + prompt-derived styles
+  const finalStyles = normalizeStyles({
+    ...(ai.styles || {}),
+    ...stylesFromPrompt(userPrompt),
+  });
+
+  // 3) Field list (normalize first, then fulfill “two text fields” if asked)
+  const wantsTwoText = /(^|\b)two\b.*\btext\s*fields?/i.test(userPrompt);
+
+  const normalizeField = (f) => {
+    const id = f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    let options = Array.isArray(f.options) ? f.options : [];
+    options = options.map((o) => (typeof o === 'string' ? o : (o?.label || o?.value || ''))).filter(Boolean);
+
+    const t = String(f.type || '').toLowerCase();
+    const typeMap = {
+      text:'text', input:'text', email:'email', textarea:'textarea',
+      select:'dropdown', dropdown:'dropdown',
+      radio:'radio', radiogroup:'radio',
+      checkbox:'checkbox', checkboxes:'checkbox',
+      date:'date', file:'file', phone:'phone', tel:'phone',
+      html:'html', button:'button', submit:'button',
+    };
+    return { id, ...f, type: typeMap[t] || 'text', options };
+  };
+
+  let newFields = Array.isArray(ai.fields) ? ai.fields.map(normalizeField) : [];
+
+  if (wantsTwoText) {
+    const existingText = newFields.filter(f => f.type === 'text');
+    const needed = Math.max(0, 2 - existingText.length);
+    for (let i = 0; i < needed; i++) {
+      newFields.push(normalizeField({
+        type: 'text',
+        label: `Text Field ${existingText.length + i + 1}`,
+        placeholder: 'Enter text',
+      }));
+    }
+  }
+
+  // 4) NLP edits
+  const { updates, styleEdits } = interpretPromptEdits(userPrompt, newFields, finalStyles);
+  if (Array.isArray(updates)) {
+    for (const { fieldId, patch } of updates) {
+      newFields = newFields.map(f => (f.id === fieldId ? { ...f, ...patch } : f));
+    }
+  }
+
+  const mergedStyles = { ...finalStyles, ...styleEdits };
+
+  // 5) Apply to builder state
+  if (styleEdits._title) setFormTitle(styleEdits._title);
+  setFields(newFields);
+  setFormStyles(mergedStyles);
+  setFormName(ai.name || "Untitled Form");
+  setFormConfig(asObject(ai.config, DEFAULT_CONFIG));
+  setShowAIModal(false);
+};
+  
+  const [selectedFieldId, setSelectedFieldId] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [activeTab, setActiveTab] = useState('build');
+  const dragIdx = useRef(null);
+
+  const updateField = useCallback((id, patch) => setFields(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f)), []);
+  const removeField = useCallback((id) => { setFields(prev => prev.filter(f => f.id !== id)); if (selectedFieldId === id) setSelectedFieldId(null); }, [selectedFieldId]);
+
+  const addFromToolbox = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+    const newField = { id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, ...data };
+    setFields(prev => [...prev, newField]);
+    setSelectedFieldId(newField.id);
+  }, []);
+
+  const onDragStartExisting = (e, i) => { dragIdx.current = i; };
+  const onDropExisting = (e, i) => {
+    e.preventDefault();
+    const list = [...fields];
+    const item = list.splice(dragIdx.current, 1)[0];
+    list.splice(i, 0, item);
+    dragIdx.current = null;
+    setFields(list);
+  };
+  
+  const handleUndo = () => {
+    setFields(asArray(initialForm.fields));
+    setFormStyles(asObject(initialForm.styles, DEFAULT_STYLES));
+    setFormTitle(initialForm.title);
+    setFormName(initialForm.name);
+    setFormConfig(asObject(initialForm.config, DEFAULT_CONFIG));
+  };
+
+  const selectedField = Array.isArray(fields) ? fields.find(f => f.id === selectedFieldId) : null;
+
+  // ===== inside FormBuilderPage =====
 return (
-  <>
-    {/* MAIN BUILDER SCREEN */}
-    <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Top Bar */}
-      <div className="bg-gray-900 text-white shadow-md">
-        <div className="max-w-full mx-auto px-6 h-14 grid grid-cols-3 items-center">
-          <div className="flex items-center gap-3" />
-          <div className="flex justify-center items-center gap-4">
-            <div className="flex items-center gap-8">
-              {['settings', 'build', 'styling'].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setActiveTab(t)}
-                  className={`uppercase text-sm tracking-wide transition ${
-                    activeTab === t ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-end items-center gap-2">
-            <button onClick={backToDashboard} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black transition-colors">
-              Back
-            </button>
+  <>
+    
+<div className="h-screen min-h-0 bg-slate-100 flex flex-col overflow-hidden">
+    {/* Top Bar */}
+      
+      <div className="bg-gray-900 text-white shadow-md">
+        <div className="max-w-full mx-auto px-6 h-14 grid grid-cols-3 items-center">
+          <div className="flex items-center gap-3" />
+          <div className="flex justify-center items-center gap-4">
+            <div className="flex items-center gap-8">
+              {['settings', 'build', 'styling'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setActiveTab(t)}
+                  className={`uppercase text-sm tracking-wide transition ${
+                    activeTab === t ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1' : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end items-center gap-2">
+            <button onClick={backToDashboard} className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black transition-colors">
+              Back
+            </button>
 
-            <button
-              onClick={() =>
-                previewForm({
-                  ...initialForm,
-                  name: formName,
-                  title: formTitle,
-                  fields,
-                  styles: formStyles,
-                  config: formConfig,
-                })
-              }
+            <button
+              onClick={() =>
+                previewForm({
+                  ...initialForm,
+                  name: formName,
+                  title: formTitle,
+                  fields,
+                  styles: formStyles,
+                  config: formConfig,
+                })
+              }
 className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black flex items-center gap-2">
-              <IconEye /> Preview
-            </button>
+              <IconEye /> Preview
+            </button>
 
 
-            <button
-              onClick={() =>
-                saveForm({
-                  ...initialForm,
-                  name: formName,
-                  title: formTitle,
-                  fields,
-                  styles: formStyles,
-                  config: formConfig,
-                })
-              }
-              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black">
-            
-              Save
-            </button>
+            <button
+              onClick={() =>
+                saveForm({
+                  ...initialForm,
+                  name: formName,
+                  title: formTitle,
+                  fields,
+                  styles: formStyles,
+                  config: formConfig,
+                })
+              }
+              className="px-3 py-1.5 rounded-md border text-sm hover:bg-slate-100 hover:text-black">
+            
+              Save
+            </button>
 
-            <button
-              onClick={() =>
-                saveAndExit({
-                  ...initialForm,
-                  name: formName,
-                  title: formTitle,
-                  fields,
-                  styles: formStyles,
-                  config: formConfig,
-                })
-              }
-              className="px-4 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 hover:text-black">
-            
-              Save & Exit
-            </button>
-          </div>
-        </div>
-      </div>
+            <button
+              onClick={() =>
+                saveAndExit({
+                  ...initialForm,
+                  name: formName,
+                  title: formTitle,
+                  fields,
+                  styles: formStyles,
+                  config: formConfig,
+                })
+              }
+              className="px-4 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 hover:text-black">
+            
+              Save & Exit
+            </button>
+          </div>
+        </div>
+      </div>
 
-      {/* Main Content Grid */}
-      <div className="builder-grid grid gap-4 p-4 flex-1 max-w-full">
-        {/* LEFT: Toolbox (build & styling tabs) */}
-        {/* LEFT: Toolbox (build & styling tabs) */}
+      {/* Main Content Grid */}
+<div className="builder-grid grid gap-4 p-4 flex-1 min-h-0 max-w-full overflow-hidden">
+    
+    {/* LEFT: Toolbox (build & styling tabs) */}
+        {/* LEFT: Toolbox (build & styling tabs) */}
 {(activeTab === 'build' || activeTab === 'styling') && (
-  <aside className="builder-left bg-slate-900 rounded-xl shadow-card border border-slate-800">
-    <div className="p-3 space-y-2">
+  <aside
+  className="builder-left bg-slate-900 rounded-xl shadow-card border border-slate-800 overflow-y-auto self-stretch"
+style={{ height: 'auto' }}
+>
+
+  <div className="p-3 space-y-2">
 <div className="text-slate-200 text-xs uppercase tracking-wide mb-2 font-bold text-center">Fields</div>
-      <ToolboxItem type="text"     label="Text"      icon={<IconHash/>} defaultData={{ placeholder: 'Enter text', required:false }} />
-      <ToolboxItem type="email"    label="Email"     icon={<IconHash/>} defaultData={{ placeholder: 'name@example.com', required:false }} />
-      <ToolboxItem type="textarea" label="Textarea"  icon={<IconHash/>} defaultData={{ placeholder: 'Enter long text', required:false }} />
-      <ToolboxItem type="dropdown" label="Dropdown"  icon={<IconHash/>} defaultData={{ options:['Option 1','Option 2'], required:false }} />
-      <ToolboxItem type="radio"    label="Radio"     icon={<IconHash/>} defaultData={{ options:['Option A','Option B'], required:false }} />
-      <ToolboxItem type="checkbox" label="Checkbox"  icon={<IconHash/>} defaultData={{ options:['Item 1','Item 2'], required:false }} />
-      <ToolboxItem type="date"     label="Date"      icon={<IconHash/>} defaultData={{ required:false }} />
-      <ToolboxItem type="file"     label="File"      icon={<IconHash/>} defaultData={{ required:false }} />
-      <ToolboxItem type="phone"    label="Phone"     icon={<IconHash/>} defaultData={{ placeholder: '(555) 555-5555', required:false }} />
-      <ToolboxItem type="button"   label="Button"    icon={<IconHash/>} defaultData={{ label:'Submit' }} />
-      <ToolboxItem type="html"     label="HTML Block" icon={<IconHash/>} defaultData={{ label:'Note', content:'<p>Edit me</p>' }} />
-    </div>
-  </aside>
+      <ToolboxItem type="text"     label="Text"      icon={<IconHash/>} defaultData={{ placeholder: 'Enter text', required:false }} />
+      <ToolboxItem type="email"    label="Email"     icon={<IconHash/>} defaultData={{ placeholder: 'name@example.com', required:false }} />
+      <ToolboxItem type="textarea" label="Textarea"  icon={<IconHash/>} defaultData={{ placeholder: 'Enter long text', required:false }} />
+      <ToolboxItem type="dropdown" label="Dropdown"  icon={<IconHash/>} defaultData={{ options:['Option 1','Option 2'], required:false }} />
+      <ToolboxItem type="radio"    label="Radio"     icon={<IconHash/>} defaultData={{ options:['Option A','Option B'], required:false }} />
+      <ToolboxItem type="checkbox" label="Checkbox"  icon={<IconHash/>} defaultData={{ options:['Item 1','Item 2'], required:false }} />
+      <ToolboxItem type="date"     label="Date"      icon={<IconHash/>} defaultData={{ required:false }} />
+      <ToolboxItem type="file"     label="File"      icon={<IconHash/>} defaultData={{ required:false }} />
+      <ToolboxItem type="phone"    label="Phone"     icon={<IconHash/>} defaultData={{ placeholder: '(555) 555-5555', required:false }} />
+      <ToolboxItem type="button"   label="Button"    icon={<IconHash/>} defaultData={{ label:'Submit' }} />
+      <ToolboxItem type="html"     label="HTML Block" icon={<IconHash/>} defaultData={{ label:'Note', content:'<p>Edit me</p>' }} />
+    </div>
+  </aside>
 )}
 
 
-        {/* CENTER: Canvas / Settings */}
-        <main
-          className={`builder-main rounded-xl shadow-card border p-6 panel-scroll ${
-            dragOver ? 'ring-2 ring-cyan-400' : ''
-          } ${activeTab === 'settings' ? 'col-span-3' : ''}`}
-          onDrop={activeTab === 'build' ? addFromToolbox : undefined}
-          onDragOver={
-            activeTab === 'build'
-              ? (e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }
-              : undefined
-          }
-          
-          onDragLeave={activeTab === 'build' ? () => setDragOver(false) : undefined}
-          style={{
-            fontFamily: formStyles.fontFamily,
-            backgroundColor: activeTab !== 'settings' ? formStyles.backgroundColor : '#ffffff',
-          }}
-          onClick={() => {
-            setSelectedFieldId(null);
-          }}
-        >
-          {/* --- BUILD TAB CONTENT --- */}
-          {/* Always-visible title header */}
+        {/* CENTER: Canvas / Settings */}
+     <main
+  className={`builder-main h-full min-h-0 rounded-xl shadow-card border p-6 pb-24 panel-scroll overflow-y-auto ${
+            dragOver ? 'ring-2 ring-cyan-400' : ''
+          } ${activeTab === 'settings' ? 'col-span-3' : ''}`}
+          onDrop={activeTab === 'build' ? addFromToolbox : undefined}
+          onDragOver={
+            activeTab === 'build'
+              ? (e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }
+              : undefined
+          }
+          
+          onDragLeave={activeTab === 'build' ? () => setDragOver(false) : undefined}
+          style={{
+            fontFamily: formStyles.fontFamily,
+            backgroundColor: activeTab !== 'settings' ? formStyles.backgroundColor : '#ffffff',
+          }}
+          onClick={() => {
+            setSelectedFieldId(null);
+          }}
+        >
+          {/* --- BUILD TAB CONTENT --- */}
+          {/* Always-visible title header */}
 
 {activeTab === 'build' && (
-  <div className="mx-auto space-y-3" style={{ maxWidth: `${formStyles.formWidthPct || 100}%` }}>
-    <h1
-     className="text-2xl font-bold mb-6 text-center"
-      style={{ color: formStyles.titleColor || formStyles.textColor }}
-    >
-      {formTitle || 'Untitled Form'}
-    </h1>
+<div className="mx-auto space-y-3 pb-24" style={{ maxWidth: `${formStyles.formWidthPct || 100}%` }}>
+    <h1
+     className="text-2xl font-bold mb-6 text-center"
+      style={{ color: formStyles.titleColor || formStyles.textColor }}
+    >
+      {formTitle || 'Untitled Form'}
+    </h1>
 
-    {fields.length === 0 && (
-      <div
-        className={`p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center ${
-          dragOver ? 'border-cyan-400 bg-cyan-50/40' : 'border-slate-300 bg-white'
-        }`}
-      >
-        Drag items from the left to add fields
-      </div>
-    )}
+    {fields.length === 0 && (
+      <div
+        className={`p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center ${
+          dragOver ? 'border-cyan-400 bg-cyan-50/40' : 'border-slate-300 bg-white'
+        }`}
+      >
+        Drag items from the left to add fields
+      </div>
+    )}
 
-    {fields.map((f, i) => (
-      <FormField
-        key={f.id}
-        field={f}
-        index={i}
-        formStyles={formStyles}
-        isSelected={selectedFieldId === f.id}
-        onSelect={setSelectedFieldId}
-        onRemove={(id) => removeField(id)}
-        onDragStart={onDragStartExisting}
-        onDrop={onDropExisting}
-      />
-    ))}
-  </div>
+    {fields.map((f, i) => (
+      <FormField
+        key={f.id}
+        field={f}
+        index={i}
+        formStyles={formStyles}
+        isSelected={selectedFieldId === f.id}
+        onSelect={setSelectedFieldId}
+        onRemove={(id) => removeField(id)}
+        onDragStart={onDragStartExisting}
+        onDrop={onDropExisting}
+      />
+    ))}
+  </div>
 )}
 
 
 
-          {/* --- STYLING TAB CONTENT --- */}
-       {activeTab === 'styling' && (
-  <div
-    className="mx-auto rounded-2xl shadow-lg p-6 sm:p-8 h-full overflow-y-auto"
-    style={{ maxWidth: `${formStyles.formWidthPct || 100}%`, backgroundColor: formStyles.backgroundColor }}
-  >
-    {formStyles.logoUrl && (
-      <img src={formStyles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />
-    )}
+          {/* --- STYLING TAB CONTENT --- */}
+       {activeTab === 'styling' && (
+  <div
+    className="mx-auto rounded-2xl shadow-lg p-6 sm:p-8 h-full overflow-y-auto"
+    style={{ maxWidth: `${formStyles.formWidthPct || 100}%`, backgroundColor: formStyles.backgroundColor }}
+  >
+    {formStyles.logoUrl && (
+      <img src={formStyles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />
+    )}
 
-    <h2
-      className="text-2xl font-bold text-center mb-6"
-      style={{ color: formStyles.titleColor || formStyles.textColor }}
-    >
-      {formTitle || 'Untitled Form'}
-    </h2>
+    <h2
+      className="text-2xl font-bold text-center mb-6"
+      style={{ color: formStyles.titleColor || formStyles.textColor }}
+    >
+      {formTitle || 'Untitled Form'}
+    </h2>
 
-    <div className="space-y-4">
-     {Array.isArray(fields) && fields.length > 0 ? (
-  fields.map((f) => {
-    // If the field is a button, render it without the container
-    if (f.type === 'button') {
-      return <FieldRendererPreview key={f.id} field={f} formStyles={formStyles} />;
-    }
-    
-    // Otherwise, render it with the container
-    return (
-      <div
-        key={f.id}
-        className="p-4 border rounded-xl shadow-sm"
-        style={{
-          backgroundColor: formStyles.fieldCardBgColor,
-          borderColor: formStyles.borderColor,
-        }}
-      >
-        <FieldRendererPreview field={f} formStyles={formStyles} />
-      </div>
-    );
-  })
+    <div className="space-y-4">
+     {Array.isArray(fields) && fields.length > 0 ? (
+  fields.map((f) => {
+    // If the field is a button, render it without the container
+    if (f.type === 'button') {
+      return <FieldRendererPreview key={f.id} field={f} formStyles={formStyles} />;
+    }
+    
+    // Otherwise, render it with the container
+    return (
+      <div
+        key={f.id}
+        className="p-4 border rounded-xl shadow-sm"
+        style={{
+          backgroundColor: formStyles.fieldCardBgColor,
+          borderColor: formStyles.borderColor,
+        }}
+      >
+        <FieldRendererPreview field={f} formStyles={formStyles} />
+      </div>
+    );
+  })
 ) : (
-        <div className="p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center bg-white">
-          Add some fields in the Build tab to see them here.
-        </div>
-      )}
-    </div>
-  </div>
+        <div className="p-10 border-2 border-dashed rounded-xl text-slate-500 text-sm text-center bg-white">
+          Add some fields in the Build tab to see them here.
+        </div>
+      )}
+    </div>
+  </div>
 )}
 
 
-          {/* --- SETTINGS TAB CONTENT --- */}
-        {activeTab === 'settings' && (
-  <div className="mx-auto max-w-3xl space-y-8">
-    {/* Title header always visible */}
-   <div className="text-center mb-6">
+          {/* --- SETTINGS TAB CONTENT --- */}
+        {activeTab === 'settings' && (
+  <div className="mx-auto max-w-3xl space-y-8">
+    {/* Title header always visible */}
+   <div className="text-center mb-6">
 </div>
 
 
-    {/* Basic */}
-    <section className="p-4 border rounded-xl bg-white space-y-4">
-      <div className="text-sm font-semibold text-slate-700">Basics</div>
-      <div>
-        <label className="text-xs font-medium text-slate-500 mb-1 block">Form Name</label>
-        <input
-          value={formName}
-          onChange={(e) => setFormName(e.target.value)}
-          className="w-full px-3 py-2 border rounded-md"
-        />
-      </div>
-      <div>
-        <label className="text-xs font-medium text-slate-500 mb-1 block">Form Title (shown to users)</label>
-        <input
-          value={formTitle}
-          onChange={(e) => setFormTitle(e.target.value)}
-          className="w-full px-3 py-2 border rounded-md"
-        />
-      </div>
-    </section>
+    {/* Basic */}
+    <section className="p-4 border rounded-xl bg-white space-y-4">
+      <div className="text-sm font-semibold text-slate-700">Basics</div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Form Name</label>
+        <input
+          value={formName}
+          onChange={(e) => setFormName(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Form Title (shown to users)</label>
+        <input
+          value={formTitle}
+          onChange={(e) => setFormTitle(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+        />
+      </div>
+    </section>
 
-    {/* Submit behavior */}
-    <section className="p-4 border rounded-xl bg-white space-y-4">
-      <div className="text-sm font-semibold text-slate-700">Submit Behavior</div>
-      <div>
-        <label className="text-xs font-medium text-slate-500 mb-1 block">Redirect URL</label>
-        <input
-          value={formConfig.submit?.redirectUrl || ''}
-          onChange={(e) => setFormConfig((p) => ({ ...p, submit: { ...p.submit, redirectUrl: e.target.value } }))}
-          placeholder="/thanks"
-          className="w-full px-3 py-2 border rounded-md"
-        />
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={!!formConfig.submit?.openInNewTab}
-          onChange={(e) => setFormConfig((p) => ({ ...p, submit: { ...p.submit, openInNewTab: e.target.checked } }))}
-        />
-        Open in new tab
-      </label>
-    </section>
+    {/* Submit behavior */}
+    <section className="p-4 border rounded-xl bg-white space-y-4">
+      <div className="text-sm font-semibold text-slate-700">Submit Behavior</div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Redirect URL</label>
+        <input
+          value={formConfig.submit?.redirectUrl || ''}
+          onChange={(e) => setFormConfig((p) => ({ ...p, submit: { ...p.submit, redirectUrl: e.target.value } }))}
+          placeholder="/thanks"
+          className="w-full px-3 py-2 border rounded-md"
+        />
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={!!formConfig.submit?.openInNewTab}
+          onChange={(e) => setFormConfig((p) => ({ ...p, submit: { ...p.submit, openInNewTab: e.target.checked } }))}
+        />
+        Open in new tab
+      </label>
+    </section>
 
-    {/* Email notifications */}
-    <section className="p-4 border rounded-xl bg-white space-y-4">
-      <div className="text-sm font-semibold text-slate-700">Email Notifications</div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={!!formConfig.email?.enabled}
-          onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, enabled: e.target.checked } }))}
-        />
-        Enable
-      </label>
+    {/* Email notifications */}
+    <section className="p-4 border rounded-xl bg-white space-y-4">
+      <div className="text-sm font-semibold text-slate-700">Email Notifications</div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={!!formConfig.email?.enabled}
+          onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, enabled: e.target.checked } }))}
+        />
+        Enable
+      </label>
 
-      {formConfig.email?.enabled && (
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">From Name</label>
-            <input
-              value={formConfig.email.fromName}
-              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, fromName: e.target.value } }))}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">From Email</label>
-            <input
-              value={formConfig.email.fromEmail}
-              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, fromEmail: e.target.value } }))}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Additional “To” (comma separated)</label>
-            <input
-              value={formConfig.email.additionalTo}
-              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, additionalTo: e.target.value } }))}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Subject</label>
-            <input
-              value={formConfig.email.subject}
-              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, subject: e.target.value } }))}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Body</label>
-            <textarea
-              value={formConfig.email.body}
-              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, body: e.target.value } }))}
-              rows={4}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-        </div>
-      )}
-    </section>
-  </div>
+      {formConfig.email?.enabled && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">From Name</label>
+            <input
+              value={formConfig.email.fromName}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, fromName: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">From Email</label>
+            <input
+              value={formConfig.email.fromEmail}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, fromEmail: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Additional “To” (comma separated)</label>
+            <input
+              value={formConfig.email.additionalTo}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, additionalTo: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Subject</label>
+            <input
+              value={formConfig.email.subject}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, subject: e.target.value } }))}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Body</label>
+            <textarea
+              value={formConfig.email.body}
+              onChange={(e) => setFormConfig((p) => ({ ...p, email: { ...p.email, body: e.target.value } }))}
+              rows={4}
+              className="w-full px-3 py-2 border rounded-md"
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  </div>
 )}
 
-        </main>
+        </main>
 
-       {/* RIGHT: Field/Styling panels */}
+       {/* RIGHT: Field/Styling panels */}
 {(activeTab === 'build' || activeTab === 'styling') && (
-  <aside className="builder-right bg-white rounded-xl shadow-card border">
-    <div className="p-4 h-full">
-      {activeTab === 'build'  && <FieldSettingsPanel field={selectedField} updateField={updateField} />}
-      {activeTab === 'styling' && (
-        <StylingPanel
-          styles={formStyles}
-          setStyles={setFormStyles}
-          formTitle={formTitle}
-          setFormTitle={setFormTitle}
-        />
-      )}
-    </div>
-  </aside>
+  <aside
+    className="builder-right bg-white rounded-xl shadow-card border overflow-y-auto self-stretch"
+style={{ height: 'auto' }}
+  >
+    <div className="p-4 h-full space-y-6">
+      {/* Field Settings */}
+      <section>
+        <div className="text-xs font-semibold text-slate-500 mb-2">Field</div>
+        <FieldSettingsPanel field={selectedField} updateField={updateField} />
+      </section>
+
+      <hr className="border-slate-200" />
+
+      {/* Styling */}
+      <section>
+        <div className="text-xs font-semibold text-slate-500 mb-2">Styling</div>
+        <StylingPanel
+          styles={formStyles}
+          setStyles={setFormStyles}
+          formTitle={formTitle}
+          setFormTitle={setFormTitle}
+        />
+      </section>
+    </div>
+  </aside>
 )}
 
-      </div>
-    </div>
 
-    {/* ✅ The modal is a sibling so it overlays the builder when open */}
-    <BuildWithAIModal
-      open={showAIModal}
-      onClose={() => setShowAIModal(false)}
-      onSubmit={buildFormWithAI}
-    />
-   </>
+
+
+      </div>
+    </div>
+
+    {/* ✅ The modal is a sibling so it overlays the builder when open */}
+    <BuildWithAIModal
+      open={showAIModal}
+      onClose={() => setShowAIModal(false)}
+      onSubmit={buildFormWithAI}
+    />
+   </>
 );
-};
- 
+}; 
 const PreviewPage = ({ previewData, exitPreview }) => {
 
   return (
     <div
-      className="min-h-screen p-6"
+  className="h-screen p-6 overflow-hidden preview-shell"
+
      style={{
   fontFamily: previewData.styles.fontFamily,
   backgroundColor: previewData.styles.backgroundColor,
@@ -2023,13 +2271,13 @@ const PreviewPage = ({ previewData, exitPreview }) => {
 
     >
       <div
-        className="max-w-2xl mx-auto border rounded-2xl shadow-card p-8"
-        // The outer form container uses the card + border colors
-        style={{
-          backgroundColor: previewData.styles.fieldCardBgColor,
-          borderColor: previewData.styles.borderColor
-        }}
-      >
+  className="max-w-2xl mx-auto border rounded-2xl shadow-card p-8 preview-card-scroll"
+  style={{
+    backgroundColor: previewData.styles.fieldCardBgColor,
+    borderColor: previewData.styles.borderColor
+  }}
+>
+
         {previewData.styles.logoUrl && (
           <img src={previewData.styles.logoUrl} alt="logo" className="max-h-16 mx-auto mb-6" />
         )}
@@ -2188,78 +2436,88 @@ function App() {
  // ... inside the App component
 
 // Effect to handle Supabase auth state changes
+// Effect to handle Supabase auth state changes (correct cleanup)
 useEffect(() => {
-  // Get the initial session and set the user
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    setSession(session);
-    setBooting(false);
-  });
+  let mounted = true;
+  setBooting(true);
 
-  // Set up a listener for any future auth changes
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    (_event, session) => {
-      setSession(session);
-    }
-  );
+  // we capture the unsubscribe function here so React can call it
+  let unsubscribe = () => {};
 
-  // Cleanup the subscription when the component unmounts
+  (async () => {
+    // 1) Read the current session immediately
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!mounted) return;
+    setSession(session ?? null);
+    setBooting(false); // we can render now
+
+    // 2) Subscribe for future changes
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange((_event, sess) => {
+        if (!mounted) return;
+        setSession(sess ?? null);
+      });
+
+    // hand the real unsubscribe up to the effect
+    unsubscribe = () => subscription?.unsubscribe();
+  })();
+
+  // 3) Proper cleanup returned to React
   return () => {
-    subscription.unsubscribe();
+    mounted = false;
+    unsubscribe();
   };
 }, []);
 
-  // Routing / initial data (depends on session)
-// ... inside the App component
 
-  // Routing / initial data (depends on session)
-  useEffect(() => {
-    if (!session) return;
 
-    // This part handles the public form view from a URL hash
-    const hash = window.location.hash;
-    if (hash.startsWith('#form-data/')) {
-      try {
-        const compressed = hash.substring(11);
-        const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
-        const formData = JSON.parse(decompressed);
-        if (formData) {
-          setPublicFormData(formData);
-          setView('public_form');
-        }
-      } catch (e) {
-        console.error("Failed to parse form data from URL", e);
+// Effect to fetch data ONLY when the session changes
+useEffect(() => {
+  // If the user is logged out, clear their forms and do nothing else.
+  if (!session) {
+    setForms([]);
+    return;
+  }
+
+  // This part handles the public form view from a URL hash
+  const hash = window.location.hash;
+  if (hash.startsWith('#form-data/')) {
+    try {
+      const compressed = hash.substring(11);
+      const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+      const formData = JSON.parse(decompressed);
+      if (formData) {
+        setPublicFormData(formData);
+        setView('public_form');
       }
-      return;
+    } catch (e) {
+      console.error("Failed to parse form data from URL", e);
     }
-    // ... inside the App component, after the other useEffects
+    return; // Stop here if it's a public form
+  }
 
-  // ✅ ADD THIS ENTIRE BLOCK
-  // This effect handles changing the view after login/logout
+  // Fetch the user's forms from Supabase
+  const fetchForms = async () => {
+    const { data, error } = await supabase
+      .from('forms')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    // This part fetches form data when the user is logged in
-    (async () => {
-      const { data, error } = await supabase.from('forms').select('*').order('created_at', { ascending: false });
-      if (error) {
-        console.error('Error fetching forms:', error);
-        return;
-      }
-      const normalized = (data || []).map(f => ({
+    if (error) {
+      console.error('Error fetching forms:', error);
+    } else {
+      const normalized = (data || []).map((f) => ({
         ...f,
         fields: asArray(f.fields),
         styles: asObject(f.styles, DEFAULT_STYLES),
         config: asObject(f.config, DEFAULT_CONFIG),
       }));
       setForms(normalized);
-    })();
-  }, [session]);
-useEffect(() => {
-    if (session && view === 'login') {
-      setView('dashboard');
     }
-    if (!session && view !== 'login') {
-      setView('login');
-    }
-  }, [session, view]);
+  };
+
+  fetchForms();
+}, [session]); //
 
   // Persist small UI state
   useEffect(() => { if (view !== 'public_form') localStorage.setItem('view', view); }, [view]);
@@ -2308,32 +2566,40 @@ if (wantsTwoText) {    newFields = [
     ];
   }
 
-  const draft = {
-    id: `draft_${Date.now()}`,
-    name: ai.name || "Untitled Form",
-    title: ai.title || "Untitled Form",
-    fields: (newFields || []).map(f => ({
-      id: f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-      ...f,
-    })),
-    styles: finalStyles,
-    config: asObject(ai.config, DEFAULT_CONFIG),
-    created_at: new Date().toISOString(),
-  };
+    // Normalize newFields to ensure each has an id
+  newFields = (Array.isArray(newFields) ? newFields : []).map(f => ({
+    id: f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+    ...f,
+  }));
 
-  setBuilderDraft(draft);
-  setCurrentFormId(null);
-  setView("builder");
+  // 1) Run NLP edit interpreter
+const { updates, styleEdits } = interpretPromptEdits(userPrompt, newFields, finalStyles);
+
+if (Array.isArray(updates)) {
+  for (const { fieldId, patch } of updates) {
+    newFields = newFields.map(f => (f.id === fieldId ? { ...f, ...patch } : f));
+  }
+}
+
+const mergedStyles = { ...finalStyles, ...styleEdits };
+
+const draft = {
+  id: `draft_${Date.now()}`,
+  name: ai.name || "Untitled Form",
+  title: styleEdits._title || ai.title || "Untitled Form",
+  fields: newFields,
+  styles: mergedStyles,
+  config: asObject(ai.config, DEFAULT_CONFIG),
+  created_at: new Date().toISOString(),
 };
 
+setBuilderDraft(draft);
+setCurrentFormId(null);
+setView("builder");
+};
 
-
-  // --- Main Effect: Manages the user session ---
- 
-     
-
-  // Persist UI state to localStorage
-  useEffect(() => {
+  // Persist UI state to localStorage
+  useEffect(() => {
     if (view !== 'public_form') localStorage.setItem('view', view);
   }, [view]);
 
@@ -2348,8 +2614,6 @@ if (wantsTwoText) {    newFields = [
 
   // --- All functions below now use async/await to talk to Supabase ---
 // inside FormBuilderPage (after the useState hooks)
-
-
 
 
 
@@ -2609,8 +2873,7 @@ if (!session) {
 
   // Fallback
   return <LoginPage />;
-}
-
+}  // closes App properly
 
 /* -------------------------------------------------------
    Error Boundary wrapper
@@ -2620,20 +2883,24 @@ class ErrorBoundary extends React.Component {
   static getDerivedStateFromError(err){ return { hasError:true, err }; }
   render(){
     if (this.state.hasError) {
-      return (<div style={{padding:16,fontFamily:'monospace'}}><h3>App crashed</h3><pre style={{whiteSpace:'pre-wrap'}}>{String(this.state.err)}</pre></div>);
+      return (
+        <div style={{padding:16,fontFamily:'monospace'}}>
+          <h3>App crashed</h3>
+          <pre style={{whiteSpace:'pre-wrap'}}>{String(this.state.err)}</pre>
+        </div>
+      );
     }
     return this.props.children;
   }
 }
 
-
-// keep this single definition
 export default function AppWrapper(){
   return (
-    <div className="ui-fix">    {/* scope wrapper */}
+    <div className="ui-fix">
       <ErrorBoundary>
         <App />
       </ErrorBoundary>
     </div>
   );
 }
+

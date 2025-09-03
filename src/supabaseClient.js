@@ -1,14 +1,28 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://yjaditzjjzniwokavpte.supabase.co';    // Paste your Project URL here
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqYWRpdHpqanpuaXdva2F2cHRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2NTE2NTUsImV4cCI6MjA3MjIyNzY1NX0.NfGuXEo_u1c3J56dZExXuYaKuNvfLjbnA70NRLBmH18'; // Paste your anon public key here
+// Use env when present; fall back to your values
+const SUPABASE_URL =
+  import.meta?.env?.VITE_SUPABASE_URL || 'https://yjaditzjjzniwokavpte.supabase.co';
 
+const SUPABASE_ANON_KEY =
+  import.meta?.env?.VITE_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqYWRpdHpqanpuaXdva2F2cHRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2NTE2NTUsImV4cCI6MjA3MjIyNzY1NX0.NfGuXEo_u1c3J56dZExXuYaKuNvfLjbnA70NRLBmH18';
 
+// HMR-safe singleton
+const sb =
+  globalThis.__sb ??
+  createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      // Turn this OFF to avoid multiple tabs on corp machines fighting over refresh
+      multiTab: false,
+      detectSessionInUrl: true,
+      // give this app its own storage key so other projects/extensions can't collide
+      storageKey: 'my-form-builder-auth',
+    },
+  });
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,       // ✅ keeps the session in localStorage
-    autoRefreshToken: true,     // ✅ refreshes tokens automatically
-    detectSessionInUrl: true,   // ✅ handles OAuth/callback flows
-  },
-});
+if (!globalThis.__sb) globalThis.__sb = sb;
+
+export const supabase = sb;

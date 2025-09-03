@@ -603,3 +603,64 @@ body {
   height: 100vh;
   overflow-y: auto;
 }
+/* === Kill the global page scrollbar === */
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* === Builder layout columns + height === */
+.builder-grid {
+  height: calc(100vh - 56px);         /* 56px = h-14 top bar */
+  grid-template-columns: 14rem minmax(0, 1fr) 22rem; /* left / center / right */
+}
+
+/* === Allow internal panels to scroll === */
+.builder-left,
+.builder-right,
+.builder-main,
+.panel-scroll {
+  min-height: 0;                       /* critical for scrolling inside grid/flex */
+  overflow-y: auto;                    /* scroll INSIDE the panel */
+}
+/* Kill global page scroll */
+html, body, #root { height: 100%; overflow: hidden; }
+
+/* Builder grid height (below your h-14/56px top bar) */
+.builder-grid { height: calc(100vh - 56px); }
+
+/* Make center panel the scroller */
+.builder-main { height: 100%; min-height: 0; overflow-y: auto; }
+
+/* Safety: any custom scroll container */
+.panel-scroll { min-height: 0; overflow-y: auto; }
+
+/* Preview page: outer shell locked, card scrolls */
+.preview-shell { height: 100vh; overflow: hidden; }
+.preview-card-scroll { max-height: calc(100vh - 120px); overflow-y: auto; }
+/* Lock page scroll */
+html, body, #root { height: 100%; overflow: hidden; }
+
+/* The builder grid fills the viewport under the 56px top bar (h-14) */
+.builder-grid { height: calc(100vh - 56px); }
+
+/* Make the center panel the scroller (Build & Styling) */
+.builder-main { height: 100%; min-height: 0; overflow-y: auto; }
+
+/* Utility: any panel we mark as panel-scroll should be able to scroll */
+.panel-scroll { min-height: 0; overflow-y: auto; }
+/* Make the app use viewport height and control where scroll lives */
+html, body, #root { height: 100%; overflow: hidden; }
+
+/* Grid below the 56px top bar (h-14) fills the rest of the screen */
+.builder-grid { height: calc(100vh - 56px); }
+
+/* The center panel should be the main scroller */
+.builder-main { min-height: 0; overflow-y: auto; }
+
+/* Utility used in code already */
+.panel-scroll { min-height: 0; overflow-y: auto; }
+
+/* Preview: outer container never scrolls page; inner card scrolls */
+.preview-shell { overflow: hidden; }
+.preview-card-scroll { max-height: calc(100vh - 160px); overflow-y: auto; }
