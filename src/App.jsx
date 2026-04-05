@@ -2716,9 +2716,9 @@ const handleLogout = async () => {
     return <div className="min-h-screen grid place-items-center text-slate-500">Loading…</div>;
   }
 // Inside the App component's return logic...
-if (!session) {
-  return <LoginPage />;
-}
+//if (!session) {
+  //return <LoginPage />;
+//}
 
   if (view === 'public_form') {
     if (!publicFormData) {
