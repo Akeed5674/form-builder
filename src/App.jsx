@@ -4,8 +4,6 @@ import './App.css';
 import { supabase } from './supabaseClient';
 import SupabaseFileUploader from './SupabaseFileUploader.jsx';
 import LZString from 'lz-string';
-// ---- Normalizers & defaults (ADD THIS) ----
-// Normalizers
 const asArray = (v) => {
   if (Array.isArray(v)) return v;
   if (typeof v === 'string') {
@@ -418,12 +416,6 @@ const parseAIFormJSON = (raw) => {
   }
 };
 
-
-
-/* -------------------------------------------------------
-   ICONS
-------------------------------------------------------- */
-// Add this new icon component to your App.jsx file
 const MagicWandIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round">
     <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
@@ -463,11 +455,6 @@ const IconCopy = () => (
   </svg>
 );
 
-
-
-/* -------------------------------------------------------
-   TOOLBOX ITEM
-------------------------------------------------------- */
 const ToolboxItem = ({ type, label, icon, defaultData }) => {
   const onDragStart = (e) => {
     e.dataTransfer.setData('application/json', JSON.stringify({ type, label, ...defaultData }));
@@ -485,9 +472,6 @@ const ToolboxItem = ({ type, label, icon, defaultData }) => {
   );
 };
 
-/* -------------------------------------------------------
-   FIELD RENDERERS (builder + preview)
-------------------------------------------------------- */
 const INPUT_BASE = "w-full px-3 py-2 border rounded-md focus:ring-2";
 const FieldRenderer = ({ field, formStyles }) => {
   const labelColor      = field.labelColor      || formStyles.textColor;
@@ -818,10 +802,6 @@ const FieldRendererPreview = ({ field, formStyles }) => {
   }
 };
 
-
-/* -------------------------------------------------------
-   FORM FIELD CARD (draggable)
-------------------------------------------------------- */
 const FormField = ({
   field, onRemove, onDragStart, onDrop, index,
   isSelected, onSelect, formStyles
@@ -1186,9 +1166,6 @@ const BuildWithAIModal = ({ open, onClose, onSubmit }) => {
 };
 
 
-/* -------------------------------------------------------
-   EMBED MODAL
-------------------------------------------------------- */
 const EmbedModal = ({ formId, forms, onClose }) => {
   const [copied, setCopied] = useState(false);
 
@@ -1230,16 +1207,6 @@ const EmbedModal = ({ formId, forms, onClose }) => {
   );
 };
 
-/* -------------------------------------------------------
-   LOGIN
-------------------------------------------------------- */
-/* -------------------------------------------------------
-   LOGIN
-------------------------------------------------------- */
-// ---- LoginPage (drop-in replacement) ----
-// LoginPage.jsx — robust version
-// ---- LoginPage (drop-in replacement) ----
-// LoginPage.jsx — robust version
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1313,11 +1280,6 @@ const LoginPage = () => {
 
 
 
-// ---- BatLogo (SVG) ----
-
-/* -------------------------------------------------------
-   NEW SVG LOGO COMPONENT
-------------------------------------------------------- */
 const SvgLogo = ({ size = 64 }) => (
   <svg
     width={size}
@@ -1509,13 +1471,7 @@ const DashboardPage = ({ forms, createNewForm, editForm, previewForm, duplicateF
     </div>
   );
 };
-/* -------------------------------------------------------
-/* -------------------------------------------------------
-   BUILDER (tabs: SETTINGS · BUILD · STYLING)
-------------------------------------------------------- */
-/* -------------------------------------------------------
-   BUILDER (tabs: SETTINGS · BUILD · STYLING)
-------------------------------------------------------- */
+
 // ----- NLP helpers: tokenize, ordinals, field matching -----
 const ORDINAL_WORDS = { first:1, second:2, third:3, fourth:4, fifth:5, sixth:6, seventh:7, eighth:8, ninth:9, tenth:10 };
 
@@ -2046,8 +2002,6 @@ style={{ height: 'auto' }}
 )}
 
 
-
-          {/* --- STYLING TAB CONTENT --- */}
        {activeTab === 'styling' && (
   <div
     className="mx-auto rounded-2xl shadow-lg p-6 sm:p-8 h-full overflow-y-auto"
@@ -2412,9 +2366,7 @@ const AIBuildPage = ({ forms, onBuild, onCancel, onNavigate, onLogout }) => {
   );
 };
 
-/* -------------------------------------------------------
-   MAIN APP CONTROLLER
-------------------------------------------------------- */
+
 function App() {
   
 
@@ -2435,7 +2387,6 @@ function App() {
   // Single auth effect: get initial session + listen for changes
  // ... inside the App component
 
-// Effect to handle Supabase auth state changes
 // Effect to handle Supabase auth state changes (correct cleanup)
 useEffect(() => {
   let mounted = true;
@@ -2875,9 +2826,7 @@ if (!session) {
   return <LoginPage />;
 }  // closes App properly
 
-/* -------------------------------------------------------
-   Error Boundary wrapper
-------------------------------------------------------- */
+
 class ErrorBoundary extends React.Component {
   constructor(p){ super(p); this.state = { hasError:false, err:null }; }
   static getDerivedStateFromError(err){ return { hasError:true, err }; }
