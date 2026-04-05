@@ -1,6 +1,4 @@
-/******************************
-  STUDIO THEME — design tokens
-******************************/
+
 :root {
   --studio-primary: #6366f1;   /* indigo-500 */
   --studio-accent:  #8b5cf6;   /* violet-500 */
@@ -16,9 +14,7 @@
 .ui-fix, .ui-fix * , .ui-fix *::before, .ui-fix *::after { box-sizing: border-box; }
 .ui-fix { font-size: 16px; }
 
-/********************************
-  App background & cards
-*********************************/
+
 .ui-fix,
 .ui-fix .min-h-screen {
   background: var(--studio-bg) !important;
@@ -40,9 +36,6 @@
 }
 
 
-/********************************
-  Topbar (builder) – subtle glass
-*********************************/
 .ui-fix .max-w-full.mx-auto.px-6.h-14.grid {
   background: color-mix(in srgb, #0b1220 92%, transparent) !important;
   backdrop-filter: saturate(120%) blur(8px);
@@ -50,9 +43,6 @@
   border-bottom: 1px solid rgba(255,255,255,0.06) !important;
 }
 
-/********************************
-  Tabs (settings · build · styling)
-*********************************/
 .ui-fix .uppercase.text-sm.tracking-wide {
   text-transform: none !important;
   letter-spacing: 0 !important;
@@ -65,9 +55,7 @@
   border: 0 !important;
 }
 
-/********************************
-  Builder grid container
-*********************************/
+
 /* Exact 3-column layout for the builder grid (build & styling tabs) */
 .ui-fix .builder-grid {
   grid-template-columns: 280px minmax(560px, 1fr) 380px;
@@ -76,10 +64,6 @@
   gap: 16px !important;
 }
 
-
-/********************************
-  Sidebar (left)
-*********************************/
 .ui-fix .builder-left {
   min-width: 0;
   width: auto;
@@ -103,9 +87,6 @@
 .ui-fix .builder-left .bg-slate-700,
 .ui-fix .builder-left .bg-slate-700\/40 { background: rgba(255,255,255,0.12) !important; }
 
-/********************************
-  Center canvas
-*********************************/
 .ui-fix .builder-main.panel-scroll {
   min-height: 640px;
   max-height: calc(100vh - 160px);
@@ -118,9 +99,7 @@
 /* Dragging ring color */
 .ui-fix .panel-scroll.ring-2 { --tw-ring-color: var(--studio-primary) !important; }
 
-/********************************
-  Right settings panel
-*********************************/
+
 .ui-fix .builder-right {
   position: sticky;
   top: 88px;
@@ -130,9 +109,7 @@
 }
 .ui-fix .builder-right .p-4 { overflow: auto; height: 100%; }
 
-/********************************
-  Cards (builder fields)
-*********************************/
+
 /* AFTER */
 /* updated */
 .ui-fix .group.relative.p-4.border.rounded-xl {
@@ -148,13 +125,6 @@
   box-shadow: 0 6px 16px rgba(225, 29, 72, .35) !important; /* delete btn glow */
 }
 
-/********************************
-  Inputs (builder + public view)
-*********************************/
-
-/********************************
-  Primary actions
-*********************************/
 .ui-fix .bg-indigo-600,
 .ui-fix .bg-cyan-500 {
   background: linear-gradient(135deg, var(--studio-primary), var(--studio-accent)) !important;
@@ -163,18 +133,12 @@
 .ui-fix .bg-indigo-600:hover,
 .ui-fix .bg-cyan-500:hover { filter: brightness(0.95); }
 
-/********************************
-  Bordered buttons (“ghost”)
-*********************************/
 .ui-fix button.border {
   border-color: var(--studio-border) !important;
   transition: background .2s ease, border-color .2s ease, transform .08s ease;
 }
 .ui-fix button.border:hover { background: #f8fafc !important; }
 
-/********************************
-  Toolbox chips
-*********************************/
 .ui-fix button.w-full.flex.items-center.gap-3.p-3.rounded-md.bg-slate-800\/70 {
   background: linear-gradient(180deg, #0f172a 0%, #0b1220 100%) !important;
   border-color: rgba(255,255,255,0.08) !important;
@@ -183,18 +147,12 @@
   background: linear-gradient(180deg, #121a2b 0%, #0d1525 100%) !important;
 }
 
-/********************************
-  Prose blocks (HTML field)
-*********************************/
 .ui-fix .prose {
   --tw-prose-body: var(--studio-text);
   --tw-prose-headings: #0f172a;
 }
 .ui-fix .prose a { color: var(--studio-primary); }
 
-/********************************
-  Scroll containers (nice scrollbars)
-*********************************/
 .ui-fix .panel-scroll {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
@@ -205,9 +163,6 @@
   border-radius: 9999px;
 }
 
-/********************************
-  Public form background
-*********************************/
 /* AFTER — remove gradients and the !important so inline styles can win */
 .ui-fix .min-h-screen.p-4.bg-slate-100,
 .ui-fix .min-h-screen.p-6 {
@@ -221,14 +176,8 @@
   background: var(--field-bg, #fff);
 }
 
-/********************************
-  Drag target box sizing (empty canvas)
-*********************************/
 .ui-fix .border-2.border-dashed.rounded-xl { min-height: 220px; }
 
-/********************************
-  Responsive collapse
-*********************************/
 @media (max-width: 1200px) {
   .ui-fix .builder-grid { grid-template-columns: 1fr; }
   .ui-fix .builder-left { display: none; }
